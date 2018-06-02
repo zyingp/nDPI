@@ -683,7 +683,7 @@ static int ndpi_add_host_url_subprotocol(struct ndpi_detection_module_struct *nd
 					 ndpi_protocol_breed_t breed /* UNUSED */)
 {
 #ifdef DEBUG
-  NDPI_LOG_DEBUG2(ndpi_struct, "[NDPI] Adding [%s][%d]\n", value, protocol_id);
+//  NDPI_LOG_DEBUG2(ndpi_struct, "[NDPI] Adding [%s][%d]\n", value, protocol_id);
 #endif
 
   return(ndpi_string_to_automa(ndpi_struct, &ndpi_struct->host_automa, value, protocol_id));
@@ -825,7 +825,7 @@ static void init_string_based_protocols(struct ndpi_detection_module_struct *ndp
     ndpi_init_protocol_match(ndpi_mod, &host_match[i]);
 
 #ifdef DEBUG
-  ac_automata_display(ndpi_mod->host_automa.ac_automa, 'n');
+  //ac_automata_display(ndpi_mod->host_automa.ac_automa, 'n');
 #endif
 
   for(i=0; content_match[i].string_to_match != NULL; i++)

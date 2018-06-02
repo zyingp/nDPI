@@ -2433,9 +2433,9 @@ static void pcap_process_packet(u_char *args,
   }
 
   /* check for buffer changes */
-  if(memcmp(packet, packet_checked, header->caplen) != 0)
-    printf("INTERNAL ERROR: ingress packet was modified by nDPI: this should not happen [thread_id=%u, packetId=%lu, caplen=%u]\n",
-	   thread_id, (unsigned long)ndpi_thread_info[thread_id].workflow->stats.raw_packet_count, header->caplen);
+//  if(memcmp(packet, packet_checked, header->caplen) != 0)
+//    printf("INTERNAL ERROR: ingress packet was modified by nDPI: this should not happen [thread_id=%u, packetId=%lu, caplen=%u]\n",
+//       thread_id, (unsigned long)ndpi_thread_info[thread_id].workflow->stats.raw_packet_count, header->caplen);
   free(packet_checked);
 
   if((pcap_end.tv_sec-pcap_start.tv_sec) > pcap_analysis_duration) {

@@ -136,7 +136,6 @@
 		E395451B20255354000BBA0D /* smpp.c in Sources */ = {isa = PBXBuildFile; fileRef = E39542C520255354000BBA0D /* smpp.c */; };
 		E395451C20255354000BBA0D /* snmp.c in Sources */ = {isa = PBXBuildFile; fileRef = E39542C620255354000BBA0D /* snmp.c */; };
 		E395451D20255354000BBA0D /* socks45.c in Sources */ = {isa = PBXBuildFile; fileRef = E39542C720255354000BBA0D /* socks45.c */; };
-		E395451E20255354000BBA0D /* socrates.c in Sources */ = {isa = PBXBuildFile; fileRef = E39542C820255354000BBA0D /* socrates.c */; };
 		E395451F20255354000BBA0D /* someip.c in Sources */ = {isa = PBXBuildFile; fileRef = E39542C920255354000BBA0D /* someip.c */; };
 		E395452020255354000BBA0D /* sopcast.c in Sources */ = {isa = PBXBuildFile; fileRef = E39542CA20255354000BBA0D /* sopcast.c */; };
 		E395452120255354000BBA0D /* soulseek.c in Sources */ = {isa = PBXBuildFile; fileRef = E39542CB20255354000BBA0D /* soulseek.c */; };
@@ -185,6 +184,7 @@
 		E395478F20269F43000BBA0D /* libpcap.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = E395478E20269F43000BBA0D /* libpcap.tbd */; };
 		E39547902026A51A000BBA0D /* ahocorasick.c in Sources */ = {isa = PBXBuildFile; fileRef = E395430020255354000BBA0D /* ahocorasick.c */; };
 		E39547942026B2AA000BBA0D /* capture.pcap in Resources */ = {isa = PBXBuildFile; fileRef = E39547932026B2A9000BBA0D /* capture.pcap */; };
+		E3D29FCC20C28A01003A3347 /* ajp.c in Sources */ = {isa = PBXBuildFile; fileRef = E3D29FCB20C28A01003A3347 /* ajp.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -331,7 +331,6 @@
 		E39542C520255354000BBA0D /* smpp.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = smpp.c; sourceTree = "<group>"; };
 		E39542C620255354000BBA0D /* snmp.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = snmp.c; sourceTree = "<group>"; };
 		E39542C720255354000BBA0D /* socks45.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = socks45.c; sourceTree = "<group>"; };
-		E39542C820255354000BBA0D /* socrates.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = socrates.c; sourceTree = "<group>"; };
 		E39542C920255354000BBA0D /* someip.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = someip.c; sourceTree = "<group>"; };
 		E39542CA20255354000BBA0D /* sopcast.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = sopcast.c; sourceTree = "<group>"; };
 		E39542CB20255354000BBA0D /* soulseek.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = soulseek.c; sourceTree = "<group>"; };
@@ -392,6 +391,7 @@
 		E395478E20269F43000BBA0D /* libpcap.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libpcap.tbd; path = usr/lib/libpcap.tbd; sourceTree = SDKROOT; };
 		E39547922026AB75000BBA0D /* ndpi_utils.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ndpi_utils.h; sourceTree = "<group>"; };
 		E39547932026B2A9000BBA0D /* capture.pcap */ = {isa = PBXFileReference; lastKnownFileType = file; path = capture.pcap; sourceTree = "<group>"; };
+		E3D29FCB20C28A01003A3347 /* ajp.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = ajp.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -496,6 +496,7 @@
 			children = (
 				E395414B20255353000BBA0D /* afp.c */,
 				E395414C20255353000BBA0D /* aimini.c */,
+				E3D29FCB20C28A01003A3347 /* ajp.c */,
 				E395414D20255353000BBA0D /* amqp.c */,
 				E395414E20255353000BBA0D /* apple_push.c */,
 				E395414F20255353000BBA0D /* applejuice.c */,
@@ -606,7 +607,6 @@
 				E39542C520255354000BBA0D /* smpp.c */,
 				E39542C620255354000BBA0D /* snmp.c */,
 				E39542C720255354000BBA0D /* socks45.c */,
-				E39542C820255354000BBA0D /* socrates.c */,
 				E39542C920255354000BBA0D /* someip.c */,
 				E39542CA20255354000BBA0D /* sopcast.c */,
 				E39542CB20255354000BBA0D /* soulseek.c */,
@@ -800,7 +800,6 @@
 				E395452E20255354000BBA0D /* telegram.c in Sources */,
 				E39543DA20255354000BBA0D /* icecast.c in Sources */,
 				E395450620255354000BBA0D /* postgres.c in Sources */,
-				E395451E20255354000BBA0D /* socrates.c in Sources */,
 				E395450B20255354000BBA0D /* quic.c in Sources */,
 				E39543A820255354000BBA0D /* armagetron.c in Sources */,
 				E39543D120255354000BBA0D /* gtp.c in Sources */,
@@ -845,6 +844,7 @@
 				E39543E120255354000BBA0D /* ldap.c in Sources */,
 				E39543C120255354000BBA0D /* directdownloadlink.c in Sources */,
 				E39544EC20255354000BBA0D /* mail_imap.c in Sources */,
+				E3D29FCC20C28A01003A3347 /* ajp.c in Sources */,
 				E395450C20255354000BBA0D /* radius.c in Sources */,
 				E395455F202558E6000BBA0D /* ndpiReader.c in Sources */,
 				E395451C20255354000BBA0D /* snmp.c in Sources */,
