@@ -599,6 +599,12 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
   u_int8_t *payload;
   u_int8_t src_to_dst_direction = 1;
   struct ndpi_proto nproto = { NDPI_PROTOCOL_UNKNOWN, NDPI_PROTOCOL_UNKNOWN };
+    
+  printf("current processing packet count %d\n", workflow->stats.raw_packet_count);
+    if(workflow->stats.raw_packet_count == 4)
+    {
+        printf("focus\n");
+    }
 
   if(iph)
     flow = get_ndpi_flow_info(workflow, IPVERSION, vlan_id, iph, NULL,

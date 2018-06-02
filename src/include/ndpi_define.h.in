@@ -76,6 +76,9 @@
 
 #endif
 
+/* Define whether we enable fast path*/
+#define USE_FAST_PATH 1
+
 #define NDPI_USE_ASYMMETRIC_DETECTION                           0
 #define NDPI_SELECTION_BITMASK_PROTOCOL_SIZE			u_int32_t
 
