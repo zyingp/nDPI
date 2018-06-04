@@ -746,6 +746,9 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
     }else if(port_to_check == 443)
     {
         goto https;
+    }else if (port_to_check == 110)
+    {
+        goto pop3;
     }
     
 old_approach:
@@ -767,13 +770,11 @@ ftp:
             
             goto last;
         }else{
-            goto pkt_num_check;
+            goto save_the_packet;
         }
     }else
     {
-        // Save the packet for later use
-        save_current_packet(flow, time, iph, iph6, ipsize, src, dst, packet_checked, donot_free_pkt);
-        goto pkt_num_check;
+        goto save_the_packet;
     }
     
 https:
@@ -805,9 +806,33 @@ https:
         goto save_the_packet;
     }
     
+    
+pop3:
+    
+    if(flow->src2dst_payload_pkt_num + flow->dst2src_payload_pkt_num >= 2)
+    {
+        if(payload_is_equal(payload, payload_len, 0, 'U'))  // Match USER
+        {
+            u_int16_t protocol_to_try[1];
+            protocol_to_try[0] = NDPI_PROTOCOL_MAIL_POP;
+            try_fast_path(workflow->ndpi_struct, flow, 1, protocol_to_try);
+            
+            goto last;
+        }else{
+            goto save_the_packet;
+        }
+    }else
+    {
+        goto save_the_packet;
+    }
+    
+    
 save_the_packet:
     // Save the packet for later use
     save_current_packet(flow, time, iph, iph6, ipsize, src, dst, packet_checked, donot_free_pkt);
+#ifdef PRINT_FAST_PATH
+    printf("save the packet \n");
+#endif
     goto pkt_num_check;
     
 pkt_num_check:
