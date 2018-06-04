@@ -3448,6 +3448,7 @@ void ndpi_connection_tracking(struct ndpi_detection_module_struct *ndpi_struct,
 
 
 #define PRINT_LOOP
+u_int64_t loop_count = 0;  // for fast path
 
 void check_ndpi_other_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 				struct ndpi_flow_struct *flow,
@@ -3515,11 +3516,14 @@ void check_ndpi_udp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 	 & *ndpi_selection_packet) == ndpi_struct->callback_buffer[proto_index].ndpi_selection_bitmask) {
     if((flow->guessed_protocol_id != NDPI_PROTOCOL_UNKNOWN)
        && (ndpi_struct->proto_defaults[flow->guessed_protocol_id].func != NULL))
+    {
       ndpi_struct->proto_defaults[flow->guessed_protocol_id].func(ndpi_struct, flow),
 #ifdef PRINT_LOOP
         printf("udp called guessed func, guessed_id %d \n", flow->guessed_protocol_id);
 #endif
+        ++loop_count;
 	func = ndpi_struct->proto_defaults[flow->guessed_protocol_id].func;
+    }
   }
 
   for(a = 0; a < ndpi_struct->callback_buffer_size_udp; a++) {
@@ -3533,6 +3537,7 @@ void check_ndpi_udp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 #ifdef PRINT_LOOP
            printf("inside udp  big loop a=%d\n",a);
 #endif
+           ++loop_count;
       ndpi_struct->callback_buffer_udp[a].func(ndpi_struct, flow);
       // NDPI_LOG_DBG(ndpi_struct, "[UDP,CALL] dissector of protocol as callback_buffer idx =  %d\n",a);
       if(flow->detected_protocol_stack[0] != NDPI_PROTOCOL_UNKNOWN)
@@ -3552,6 +3557,25 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
   u_int16_t proto_index = ndpi_struct->proto_defaults[flow->guessed_protocol_id].protoIdx;
   int16_t proto_id = ndpi_struct->proto_defaults[flow->guessed_protocol_id].protoId;
   NDPI_PROTOCOL_BITMASK detection_bitmask;
+    
+#ifdef USE_FAST_PATH
+    if(flow->include_protocol_num > 0)
+    {
+        for (int i = 0 ; i < flow->include_protocol_num; ++i) {
+            if((flow->include_protocol_ids[i] != NDPI_PROTOCOL_UNKNOWN)
+               && (ndpi_struct->proto_defaults[flow->include_protocol_ids[i]].func != NULL))
+            {
+                ndpi_struct->proto_defaults[flow->include_protocol_ids[i]].func(ndpi_struct, flow),
+#ifdef PRINT_LOOP
+                printf("tcp has payload called included func, included_id %d \n", flow->guessed_protocol_id);
+#endif
+                ++loop_count;
+                //func = ndpi_struct->proto_defaults[flow->guessed_protocol_id].func;
+            }
+        }
+        return;
+    }
+#endif //USE_FAST_PATH
 
   NDPI_SAVE_AS_BITMASK(detection_bitmask, flow->packet.detected_protocol_stack[0]);
 
@@ -3563,12 +3587,14 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 			       detection_bitmask) != 0
        && (ndpi_struct->callback_buffer[proto_index].ndpi_selection_bitmask & *ndpi_selection_packet) == ndpi_struct->callback_buffer[proto_index].ndpi_selection_bitmask) {
       if((flow->guessed_protocol_id != NDPI_PROTOCOL_UNKNOWN)
-	 && (ndpi_struct->proto_defaults[flow->guessed_protocol_id].func != NULL))
+         && (ndpi_struct->proto_defaults[flow->guessed_protocol_id].func != NULL)){
 	ndpi_struct->proto_defaults[flow->guessed_protocol_id].func(ndpi_struct, flow),
 #ifdef PRINT_LOOP
           printf("tcp has payload called guessed func, guessed_id %d \n", flow->guessed_protocol_id);
 #endif
+          ++loop_count;
 	  func = ndpi_struct->proto_defaults[flow->guessed_protocol_id].func;
+      }
     }
 
     if(flow->detected_protocol_stack[0] == NDPI_PROTOCOL_UNKNOWN) {
@@ -3582,6 +3608,7 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 #ifdef PRINT_LOOP
            printf("inside tcp has payload big loop a=%d\n",a);
 #endif
+           ++loop_count;
 	  ndpi_struct->callback_buffer_tcp_payload[a].func(ndpi_struct, flow);
 
 
@@ -3606,6 +3633,7 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 #ifdef PRINT_LOOP
           printf("tcp no payload called guessed func, guessed_id %d \n", flow->guessed_protocol_id);
 #endif
+           ++loop_count;
 	  func = ndpi_struct->proto_defaults[flow->guessed_protocol_id].func;
     }
 
@@ -3621,6 +3649,7 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 #ifdef PRINT_LOOP
          printf("inside tcp no payload big loop a=%d\n",a);
 #endif
+         ++loop_count;
 	ndpi_struct->callback_buffer_tcp_no_payload[a].func(ndpi_struct, flow);
 
 	if(flow->detected_protocol_stack[0] != NDPI_PROTOCOL_UNKNOWN)

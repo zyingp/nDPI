@@ -2073,6 +2073,9 @@ static void printResults(u_int64_t tot_usec) {
       }
     }
   }
+   
+    extern uint64_t loop_count;
+    printf("loop_count: %ld", loop_count);
 
   // printf("\n\nTotal Flow Traffic: %llu (diff: %llu)\n", total_flow_bytes, cumulative_stats.total_ip_bytes-total_flow_bytes);
 
@@ -2352,12 +2355,13 @@ static void pcap_process_packet(u_char *args,
 				const u_char *packet) {
   struct ndpi_proto p;
   u_int16_t thread_id = *((u_int16_t*)args);
+  uint8_t donot_free_pkt = 0;  // 1 means not free packet here (will freed by the fast-path module)
 
   /* allocate an exact size buffer to check overflows */
   uint8_t *packet_checked = malloc(header->caplen);
 
   memcpy(packet_checked, packet, header->caplen);
-  p = ndpi_workflow_process_packet(ndpi_thread_info[thread_id].workflow, header, packet_checked);
+  p = ndpi_workflow_process_packet(ndpi_thread_info[thread_id].workflow, header, packet_checked, packet_checked, &donot_free_pkt);
 
   if((capture_until != 0) && (header->ts.tv_sec >= capture_until)) {
     if(ndpi_thread_info[thread_id].workflow->pcap_handle != NULL)
@@ -2436,7 +2440,9 @@ static void pcap_process_packet(u_char *args,
 //  if(memcmp(packet, packet_checked, header->caplen) != 0)
 //    printf("INTERNAL ERROR: ingress packet was modified by nDPI: this should not happen [thread_id=%u, packetId=%lu, caplen=%u]\n",
 //       thread_id, (unsigned long)ndpi_thread_info[thread_id].workflow->stats.raw_packet_count, header->caplen);
-  free(packet_checked);
+    if(donot_free_pkt == 0){
+       free(packet_checked);
+    }
 
   if((pcap_end.tv_sec-pcap_start.tv_sec) > pcap_analysis_duration) {
     int i;

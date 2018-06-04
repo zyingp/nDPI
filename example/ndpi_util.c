@@ -80,6 +80,9 @@ void ndpi_free_flow_info_half(struct ndpi_flow_info *flow) {
   if(flow->ndpi_flow) { ndpi_flow_free(flow->ndpi_flow); flow->ndpi_flow = NULL; }
   if(flow->src_id)    { ndpi_free(flow->src_id); flow->src_id = NULL; }
   if(flow->dst_id)    { ndpi_free(flow->dst_id); flow->dst_id = NULL; }
+#ifdef USE_FAST_PATH
+    clean_saved_packets(flow);  // for fast path
+#endif //USE_FAST_PATH
 }
 
 /* ***************************************************** */
@@ -573,6 +576,38 @@ void process_ndpi_collected_info(struct ndpi_workflow * workflow, struct ndpi_fl
   }
 }
 
+
+#ifdef USE_FAST_PATH
+// Try the fast path and if failed, go with the old approach
+static void try_fast_path(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_info *flow, int try_protocol_num, u_int16_t *protocol_ids)
+{
+    flow->ndpi_flow->include_protocol_num = try_protocol_num;
+    for (int i = 0 ; i < try_protocol_num; ++i) {
+        flow->ndpi_flow->include_protocol_ids[i] = protocol_ids[i];
+    }
+    flow->detected_protocol = apply_saved_pkt(ndpi_struct, flow);
+    if(flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
+    {       // succeed
+        // Do not need to clean saved packets here, but could do it in later collect_info
+    }else{  // failed
+        // Transfer the tried protocol to exclude protocols
+        flow->ndpi_flow->exclude_protocol_num = try_protocol_num;
+        for (int i = 0 ; i < try_protocol_num; ++i) {
+            flow->ndpi_flow->exclude_protocol_ids[i] = protocol_ids[i];
+        }
+        flow->ndpi_flow->include_protocol_num = 0;  //clean
+        // Create new ndpi_flow, since old one has already been used by several packets
+        ndpi_free(flow->ndpi_flow);
+        flow->ndpi_flow = create_ndpi_flow();
+        // Apply the saved packets again using old approach
+        flow->detected_protocol = apply_saved_pkt(ndpi_struct, flow);
+        // Treat future packets by old approach
+        flow->using_old_approach = 1;
+    }
+}
+
+#endif
+
 /* ****************************************************** */
 
 /**
@@ -588,7 +623,7 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
 					   const struct ndpi_iphdr *iph,
 					   struct ndpi_ipv6hdr *iph6,
 					   u_int16_t ip_offset,
-					   u_int16_t ipsize, u_int16_t rawsize) {
+					   u_int16_t ipsize, u_int16_t rawsize, uint8_t *packet_checked, uint8_t *donot_free_pkt) {
   struct ndpi_id_struct *src, *dst;
   struct ndpi_flow_info *flow = NULL;
   struct ndpi_flow_struct *ndpi_flow = NULL;
@@ -600,8 +635,10 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
   u_int8_t src_to_dst_direction = 1;
   struct ndpi_proto nproto = { NDPI_PROTOCOL_UNKNOWN, NDPI_PROTOCOL_UNKNOWN };
     
+#ifdef PRINT_FAST_PATH
   printf("current processing packet count %d\n", workflow->stats.raw_packet_count);
-    if(workflow->stats.raw_packet_count == 4)
+#endif
+    if(workflow->stats.raw_packet_count == 425)
     {
         printf("focus\n");
     }
@@ -619,6 +656,8 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
 			       &src, &dst, &proto,
 			       &payload, &payload_len, &src_to_dst_direction);
 
+  int port_to_check = src_to_dst_direction?dport:sport;
+      
   if(flow != NULL) {
     workflow->stats.ip_packet_count++;
     workflow->stats.total_wire_bytes += rawsize + 24 /* CRC etc */,
@@ -631,6 +670,37 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
       flow->dst2src_packets++, flow->dst2src_bytes += rawsize;
 
     flow->last_seen = time;
+      
+#ifdef USE_FAST_PATH
+      
+      if(payload_len >0)
+      {
+          if(src_to_dst_direction)
+          {
+              flow->src2dst_payload_pkt_num++;
+              if (port_to_check == 443)
+              {   // change_cipher_spec(20), alert(21), handshake(22), application_data(23)
+                  if(payload_is_equal(payload, payload_len, 0, 22) || payload_is_equal(payload, payload_len, 0, 20)
+                     || payload_is_equal(payload, payload_len, 0, 23))
+                  {
+                      flow->src2dst_tls_pkt_num++;
+                  }
+              }
+          }else{
+              flow->dst2src_payload_pkt_num++;
+              if (port_to_check == 443)
+              {   // change_cipher_spec(20), alert(21), handshake(22), application_data(23)
+                  if(payload_is_equal(payload, payload_len, 0, 22) || payload_is_equal(payload, payload_len, 0, 20)
+                     || payload_is_equal(payload, payload_len, 0, 23))
+                  {
+                      flow->dst2src_tls_pkt_num++;
+                  }
+              }
+          }
+      }
+      
+#endif
+      
   } else { // flow is NULL
     workflow->stats.total_discarded_bytes++;
     return(nproto);
@@ -661,14 +731,109 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
     return(flow->detected_protocol);
   }
 
-  flow->detected_protocol =
+    uint8_t give_up_detection = 0;
+    
+#ifdef USE_FAST_PATH
+    
+    if(flow->using_old_approach == 1)
+    {
+        goto old_approach;
+    }
+    
+    if(port_to_check == 21)
+    {
+        goto ftp;
+    }else if(port_to_check == 443)
+    {
+        goto https;
+    }
+    
+old_approach:
+    flow->detected_protocol =
     ndpi_detection_process_packet(workflow->ndpi_struct, ndpi_flow,
-				  iph ? (uint8_t *)iph : (uint8_t *)iph6,
-				  ipsize, time, src, dst);
+                                  iph ? (uint8_t *)iph : (uint8_t *)iph6,
+                                  ipsize, time, src, dst);
+    goto last;
+    
+ftp:
+    
+    if(flow->src2dst_payload_pkt_num + flow->dst2src_payload_pkt_num >= 4)
+    {
+        if(payload_is_equal(payload, payload_len, 0, 'P'))  // Match PASS
+        {
+            u_int16_t protocol_to_try[1];
+            protocol_to_try[0] = NDPI_PROTOCOL_FTP_CONTROL;
+            try_fast_path(workflow->ndpi_struct, flow, 1, protocol_to_try);
+            
+            goto last;
+        }else{
+            goto pkt_num_check;
+        }
+    }else
+    {
+        // Save the packet for later use
+        save_current_packet(flow, time, iph, iph6, ipsize, src, dst, packet_checked, donot_free_pkt);
+        goto pkt_num_check;
+    }
+    
+https:
+    
+    if(flow->src2dst_tls_pkt_num + flow->dst2src_tls_pkt_num >= 1)
+    {
+        if(flow->src2dst_payload_pkt_num + flow->dst2src_payload_pkt_num >= 3) // CH, SH, Certificate
+        {
+            u_int16_t protocol_to_try[1];
+            protocol_to_try[0] = NDPI_PROTOCOL_SSL;
+            try_fast_path(workflow->ndpi_struct, flow, 1, protocol_to_try);
+            
+            // if we already found SNI, but still cannot match app protocol, then we could abort
+            if( (flow->detected_protocol.app_protocol == NDPI_PROTOCOL_UNKNOWN) &&
+                 flow->ndpi_flow->protos.ssl.client_certificate[0] != '\0')
+            {
+#ifdef PRINT_FAST_PATH
+                printf("ssl give up here \n");
+#endif
+                give_up_detection = 1;
+            }
+            
+            goto last;
+        }else
+        {
+            goto save_the_packet;
+        }
+    }else{
+        goto save_the_packet;
+    }
+    
+save_the_packet:
+    // Save the packet for later use
+    save_current_packet(flow, time, iph, iph6, ipsize, src, dst, packet_checked, donot_free_pkt);
+    goto pkt_num_check;
+    
+pkt_num_check:
+    if(flow->src2dst_packets + flow->dst2src_packets > 10)
+    {
+        flow->detected_protocol = apply_saved_pkt(workflow->ndpi_struct,flow);
+    }
+    goto last;
+
+    
+last:
+    
+#else
+    
+    flow->detected_protocol =
+       ndpi_detection_process_packet(workflow->ndpi_struct, ndpi_flow,
+                                  iph ? (uint8_t *)iph : (uint8_t *)iph6,
+                                  ipsize, time, src, dst);
+#endif
+
 
   if((flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
      || ((proto == IPPROTO_UDP) && ((flow->src2dst_packets + flow->dst2src_packets) > 8))
-     || ((proto == IPPROTO_TCP) && ((flow->src2dst_packets + flow->dst2src_packets) > 10))) {
+     || ((proto == IPPROTO_TCP) && ((flow->src2dst_packets + flow->dst2src_packets) > 10))
+     || give_up_detection == 1
+     ) {
     /* New protocol detected or give up */
     flow->detection_completed = 1;
     /* Check if we should keep checking extra packets */
@@ -688,7 +853,7 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
 
 struct ndpi_proto ndpi_workflow_process_packet (struct ndpi_workflow * workflow,
 						const struct pcap_pkthdr *header,
-						const u_char *packet) {
+						const u_char *packet, uint8_t *packet_checked, uint8_t *donot_free_pkt) {
   /*
    * Declare pointers to packet headers
    */
@@ -1024,7 +1189,7 @@ iph_check:
 
   /* process the packet */
   return(packet_processing(workflow, time, vlan_id, iph, iph6,
-			   ip_offset, header->caplen - ip_offset, header->caplen));
+			   ip_offset, header->caplen - ip_offset, header->caplen, packet_checked, donot_free_pkt));
 }
 
 /* ********************************************************** */
