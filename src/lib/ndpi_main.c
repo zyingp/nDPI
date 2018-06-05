@@ -3447,7 +3447,7 @@ void ndpi_connection_tracking(struct ndpi_detection_module_struct *ndpi_struct,
 }
 
 
-#define PRINT_LOOP
+//#define PRINT_LOOP
 u_int64_t loop_count = 0;  // for fast path
 
 void check_ndpi_other_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
@@ -3558,26 +3558,41 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
   int16_t proto_id = ndpi_struct->proto_defaults[flow->guessed_protocol_id].protoId;
   NDPI_PROTOCOL_BITMASK detection_bitmask;
     
+  NDPI_SAVE_AS_BITMASK(detection_bitmask, flow->packet.detected_protocol_stack[0]);
+    
 #ifdef USE_FAST_PATH
+    
+    u_int16_t protoIdx;
+    int16_t protoId;
     if(flow->include_protocol_num > 0)
     {
-        for (int i = 0 ; i < flow->include_protocol_num; ++i) {
-            if((flow->include_protocol_ids[i] != NDPI_PROTOCOL_UNKNOWN)
-               && (ndpi_struct->proto_defaults[flow->include_protocol_ids[i]].func != NULL))
+        for (int i = 0 ; i < flow->include_protocol_num; ++i)
+        {
+            protoIdx = ndpi_struct->proto_defaults[flow->include_protocol_ids[i]].protoIdx;
+            protoId = ndpi_struct->proto_defaults[flow->include_protocol_ids[i]].protoId;
+            if((protoId != NDPI_PROTOCOL_UNKNOWN)
+               && NDPI_BITMASK_COMPARE(flow->excluded_protocol_bitmask,
+                                       ndpi_struct->callback_buffer[protoIdx].excluded_protocol_bitmask) == 0
+               && NDPI_BITMASK_COMPARE(ndpi_struct->callback_buffer[protoIdx].detection_bitmask,
+                                       detection_bitmask) != 0
+               && (ndpi_struct->callback_buffer[protoIdx].ndpi_selection_bitmask & *ndpi_selection_packet) == ndpi_struct->callback_buffer[protoIdx].ndpi_selection_bitmask )
             {
-                ndpi_struct->proto_defaults[flow->include_protocol_ids[i]].func(ndpi_struct, flow),
-#ifdef PRINT_LOOP
-                printf("tcp has payload called included func, included_id %d \n", flow->guessed_protocol_id);
-#endif
-                ++loop_count;
-                //func = ndpi_struct->proto_defaults[flow->guessed_protocol_id].func;
+                if((flow->include_protocol_ids[i] != NDPI_PROTOCOL_UNKNOWN)
+                   && (ndpi_struct->proto_defaults[flow->include_protocol_ids[i]].func != NULL))
+                {
+                    ndpi_struct->proto_defaults[flow->include_protocol_ids[i]].func(ndpi_struct, flow);
+    #ifdef PRINT_LOOP
+                    printf("tcp has payload called included func, included_id %d \n", flow->guessed_protocol_id);
+    #endif
+                    ++loop_count;
+                    //func = ndpi_struct->proto_defaults[flow->guessed_protocol_id].func;
+                }
             }
         }
         return;
     }
 #endif //USE_FAST_PATH
 
-  NDPI_SAVE_AS_BITMASK(detection_bitmask, flow->packet.detected_protocol_stack[0]);
 
   if(flow->packet.payload_packet_len != 0) {
     if((proto_id != NDPI_PROTOCOL_UNKNOWN)
@@ -3702,7 +3717,9 @@ ndpi_protocol ndpi_detection_giveup(struct ndpi_detection_module_struct *ndpi_st
   if(flow->detected_protocol_stack[0] == NDPI_PROTOCOL_UNKNOWN) {
     u_int16_t guessed_protocol_id, guessed_host_protocol_id;
 
-    if(flow->protos.ssl.client_certificate[0] != '\0') {
+      // Fix a bug, since protos is a union so the data of http's detected_os field
+      // may be wrongly recognized ssl's client_certificate field.
+    if(flow->detected_protocol_stack[1] == NDPI_PROTOCOL_SSL && flow->protos.ssl.client_certificate[0] != '\0') {
       ndpi_set_detected_protocol(ndpi_struct, flow, NDPI_PROTOCOL_SSL, NDPI_PROTOCOL_UNKNOWN);
     } else {
       if((flow->guessed_protocol_id == NDPI_PROTOCOL_UNKNOWN)

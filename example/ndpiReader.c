@@ -868,13 +868,14 @@ static void node_print_known_proto_walker(const void *node, ndpi_VISIT which, in
  * @brief Guess Undetected Protocol
  */
 static u_int16_t node_guess_undetected_protocol(u_int16_t thread_id, struct ndpi_flow_info *flow) {
-
+//    //disable guess temporarily
+//    return NDPI_PROTOCOL_UNKNOWN;
   flow->detected_protocol = ndpi_guess_undetected_protocol(ndpi_thread_info[thread_id].workflow->ndpi_struct,
-							   flow->protocol,
-							   ntohl(flow->src_ip),
-							   ntohs(flow->src_port),
-							   ntohl(flow->dst_ip),
-							   ntohs(flow->dst_port));
+                               flow->protocol,
+                               ntohl(flow->src_ip),
+                               ntohs(flow->src_port),
+                               ntohl(flow->dst_ip),
+                               ntohs(flow->dst_port));
   // printf("Guess state: %u\n", flow->detected_protocol);
   if(flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
     ndpi_thread_info[thread_id].workflow->stats.guessed_flow_protocols++;
@@ -891,7 +892,11 @@ static void node_proto_guess_walker(const void *node, ndpi_VISIT which, int dept
   u_int16_t thread_id = *((u_int16_t *) user_data);
 
   if((which == ndpi_preorder) || (which == ndpi_leaf)) { /* Avoid walking the same node multiple times */
-    if((!flow->detection_completed) && flow->ndpi_flow)
+#ifdef USE_FAST_PATH
+      // Some flows are small and may never reach the threshold of fast-path and not detected
+      check_saved_pkt_if_never_checked(ndpi_thread_info[0].workflow, flow);
+#endif
+      if((!flow->detection_completed) && flow->ndpi_flow)
       flow->detected_protocol = ndpi_detection_giveup(ndpi_thread_info[0].workflow->ndpi_struct, flow->ndpi_flow);
 
     if(enable_protocol_guess) {

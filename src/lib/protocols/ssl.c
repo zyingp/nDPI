@@ -371,6 +371,9 @@ int sslDetectProtocolFromCertificate(struct ndpi_detection_module_struct *ndpi_s
 #endif
 	u_int32_t subproto = ndpi_match_host_subprotocol(ndpi_struct, flow, certificate,
 							 strlen(certificate), NDPI_PROTOCOL_SSL);
+//          if (subproto == NDPI_PROTOCOL_GOOGLE_SERVICES) {
+//              printf("hre\n");
+//          }
 	if(subproto != NDPI_PROTOCOL_UNKNOWN) {
     /* If we've detected the subprotocol from client certificate but haven't had a chance
       * to see the server certificate yet, set up extra packet processing to wait

@@ -578,31 +578,42 @@ void process_ndpi_collected_info(struct ndpi_workflow * workflow, struct ndpi_fl
 
 
 #ifdef USE_FAST_PATH
-// Try the fast path and if failed, go with the old approach
-static void try_fast_path(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_info *flow, int try_protocol_num, u_int16_t *protocol_ids)
+
+static void try_saved_packets_fast_path(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_info *flow, int try_protocol_num, u_int16_t *protocol_ids)
 {
     flow->ndpi_flow->include_protocol_num = try_protocol_num;
     for (int i = 0 ; i < try_protocol_num; ++i) {
         flow->ndpi_flow->include_protocol_ids[i] = protocol_ids[i];
     }
     flow->detected_protocol = apply_saved_pkt(ndpi_struct, flow);
+}
+
+static void try_saved_packets_old_way(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_info *flow, int try_protocol_num, u_int16_t *protocol_ids)
+{
+    // Transfer the tried protocol to exclude protocols
+    flow->ndpi_flow->exclude_protocol_num = try_protocol_num;
+    for (int i = 0 ; i < try_protocol_num; ++i) {
+        flow->ndpi_flow->exclude_protocol_ids[i] = protocol_ids[i];
+    }
+    flow->ndpi_flow->include_protocol_num = 0;  //clean
+    // Create new ndpi_flow, since old one has already been used by several packets
+    ndpi_free(flow->ndpi_flow);
+    flow->ndpi_flow = create_ndpi_flow();
+    // Apply the saved packets again using old approach
+    flow->detected_protocol = apply_saved_pkt(ndpi_struct, flow);
+    // Treat future packets by old approach
+    flow->using_old_approach = 1;
+}
+
+// Try the fast path and if failed, go with the old approach
+static void try_fast_path(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_info *flow, int try_protocol_num, u_int16_t *protocol_ids)
+{
+    try_saved_packets_fast_path(ndpi_struct, flow, try_protocol_num, protocol_ids);
     if(flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
     {       // succeed
         // Do not need to clean saved packets here, but could do it in later collect_info
     }else{  // failed
-        // Transfer the tried protocol to exclude protocols
-        flow->ndpi_flow->exclude_protocol_num = try_protocol_num;
-        for (int i = 0 ; i < try_protocol_num; ++i) {
-            flow->ndpi_flow->exclude_protocol_ids[i] = protocol_ids[i];
-        }
-        flow->ndpi_flow->include_protocol_num = 0;  //clean
-        // Create new ndpi_flow, since old one has already been used by several packets
-        ndpi_free(flow->ndpi_flow);
-        flow->ndpi_flow = create_ndpi_flow();
-        // Apply the saved packets again using old approach
-        flow->detected_protocol = apply_saved_pkt(ndpi_struct, flow);
-        // Treat future packets by old approach
-        flow->using_old_approach = 1;
+        try_saved_packets_old_way(ndpi_struct, flow, try_protocol_num, protocol_ids);
     }
 }
 
@@ -638,7 +649,7 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
 #ifdef PRINT_FAST_PATH
   printf("current processing packet count %d\n", workflow->stats.raw_packet_count);
 #endif
-    if(workflow->stats.raw_packet_count == 425)
+    if(workflow->stats.raw_packet_count == 32)
     {
         printf("focus\n");
     }
@@ -740,15 +751,34 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
         goto old_approach;
     }
     
+    if(port_to_check == 21 || port_to_check == 443 || port_to_check == 110
+       || port_to_check == 80)
+    {
+        // Save the packet for later use
+        save_current_packet(flow, time, iph, iph6, ipsize, src, dst, packet_checked, donot_free_pkt
+#ifdef PRINT_FAST_PATH
+                            ,workflow->stats.raw_packet_count
+#endif
+                            );
+#ifdef PRINT_FAST_PATH
+        printf("save the packet \n");
+#endif
+    }
+    
     if(port_to_check == 21)
     {
         goto ftp;
-    }else if(port_to_check == 443)
+    }
+    else if(port_to_check == 443)
     {
         goto https;
-    }else if (port_to_check == 110)
+    }
+    else if (port_to_check == 110)
     {
         goto pop3;
+    }else if (port_to_check == 80)
+    {
+        goto http;
     }
     
 old_approach:
@@ -770,11 +800,11 @@ ftp:
             
             goto last;
         }else{
-            goto save_the_packet;
+            goto pkt_num_check;
         }
     }else
     {
-        goto save_the_packet;
+        goto pkt_num_check;
     }
     
 https:
@@ -785,25 +815,30 @@ https:
         {
             u_int16_t protocol_to_try[1];
             protocol_to_try[0] = NDPI_PROTOCOL_SSL;
-            try_fast_path(workflow->ndpi_struct, flow, 1, protocol_to_try);
-            
-            // if we already found SNI, but still cannot match app protocol, then we could abort
-            if( (flow->detected_protocol.app_protocol == NDPI_PROTOCOL_UNKNOWN) &&
-                 flow->ndpi_flow->protos.ssl.client_certificate[0] != '\0')
-            {
+            try_saved_packets_fast_path(workflow->ndpi_struct, flow, 1, protocol_to_try);
+            if(flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
+            {       // succeed
+                // Do not need to clean saved packets here, but could do it in later collect_info
+            }else{  // failed
+                // if we already found SNI, but still cannot match app protocol, then we could abort
+                if(flow->ndpi_flow->protos.ssl.client_certificate[0] != '\0')
+                {
 #ifdef PRINT_FAST_PATH
-                printf("ssl give up here \n");
+                    printf("ssl give up here \n");
 #endif
-                give_up_detection = 1;
+                    give_up_detection = 1;
+                }else{
+                    try_saved_packets_old_way(workflow->ndpi_struct, flow, 1, protocol_to_try);
+                }
             }
-            
+ 
             goto last;
         }else
         {
-            goto save_the_packet;
+            goto pkt_num_check;
         }
     }else{
-        goto save_the_packet;
+        goto pkt_num_check;
     }
     
     
@@ -819,26 +854,57 @@ pop3:
             
             goto last;
         }else{
-            goto save_the_packet;
+            goto pkt_num_check;
         }
     }else
     {
-        goto save_the_packet;
+        goto pkt_num_check;
+    }
+   
+    
+http:
+    
+    if(flow->src2dst_payload_pkt_num + flow->dst2src_payload_pkt_num >= 1)
+    {
+        if(payload_bytes_are_equal(payload, payload_len, 0, 3, (uint8_t*)"GET") ||
+            payload_bytes_are_equal(payload, payload_len, 0, 4, (uint8_t*)"POST"))  // Match GET POST
+        {
+            u_int16_t protocol_to_try[2];
+            protocol_to_try[0] = NDPI_PROTOCOL_HTTP;
+            protocol_to_try[1] = NDPI_PROTOCOL_HTTP_APPLICATION_ACTIVESYNC;
+            try_saved_packets_fast_path(workflow->ndpi_struct, flow, 2, protocol_to_try);
+            if(flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
+            {       // succeed
+                // Do not need to clean saved packets here, but could do it in later collect_info
+            }else{  // failed
+                // We have found the url(confirming it's http), but we cannot find the matched site name,
+                // so abort since we'll never find
+                if(flow->ndpi_flow->http.url != NULL)
+                {
+#ifdef PRINT_FAST_PATH
+                    printf("http give up here \n");
+#endif
+                    give_up_detection = 1;
+                }else{
+                    try_saved_packets_old_way(workflow->ndpi_struct, flow, 1, protocol_to_try);
+                }
+            }
+            
+            goto last;
+        }else{
+            goto pkt_num_check;
+        }
+    }else
+    {
+        goto pkt_num_check;
     }
     
-    
-save_the_packet:
-    // Save the packet for later use
-    save_current_packet(flow, time, iph, iph6, ipsize, src, dst, packet_checked, donot_free_pkt);
-#ifdef PRINT_FAST_PATH
-    printf("save the packet \n");
-#endif
-    goto pkt_num_check;
     
 pkt_num_check:
     if(flow->src2dst_packets + flow->dst2src_packets > 10)
     {
-        flow->detected_protocol = apply_saved_pkt(workflow->ndpi_struct,flow);
+        try_saved_packets_old_way(workflow->ndpi_struct,flow, 0, NULL);
+        //flow->detected_protocol = apply_saved_pkt(workflow->ndpi_struct,flow);
     }
     goto last;
 
@@ -854,6 +920,7 @@ last:
 #endif
 
 
+    // TODO: extra a function and shared with method check_saved_pkt_if_never_checked    
   if((flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
      || ((proto == IPPROTO_UDP) && ((flow->src2dst_packets + flow->dst2src_packets) > 8))
      || ((proto == IPPROTO_TCP) && ((flow->src2dst_packets + flow->dst2src_packets) > 10))
@@ -862,14 +929,24 @@ last:
     /* New protocol detected or give up */
     flow->detection_completed = 1;
     /* Check if we should keep checking extra packets */
-    if (ndpi_flow->check_extra_packets)
+    if (flow->ndpi_flow->check_extra_packets)
+        // ^since the ndpi_flow inside flow_info may be replaced, so always fetch
       flow->check_extra_packets = 1;
 
-    if(flow->detected_protocol.app_protocol == NDPI_PROTOCOL_UNKNOWN)
-      flow->detected_protocol = ndpi_detection_giveup(workflow->ndpi_struct,
+      if(flow->detected_protocol.app_protocol == NDPI_PROTOCOL_UNKNOWN){
+         flow->detected_protocol = ndpi_detection_giveup(workflow->ndpi_struct,
 						      flow->ndpi_flow);
+      }
     process_ndpi_collected_info(workflow, flow);
   }
+    
+    
+#ifdef USE_FAST_PATH
+    
+    // If there are some unused packet after using fast-path approach, we should feed them into extra packet processing
+    apply_unused_saved_pkt_as_extra_packet(workflow, flow);
+    
+#endif
 
   return(flow->detected_protocol);
 }
