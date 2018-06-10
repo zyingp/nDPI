@@ -830,8 +830,8 @@ https:
                 if(flow->ndpi_flow->protos.ssl.client_certificate[0] != '\0' ||
                    flow->ndpi_flow->protos.ssl.server_certificate[0] != '\0')
                 {
-#ifdef PRINT_FAST_PATH
                     flow->using_found_fast_path = 1;
+#ifdef PRINT_FAST_PATH
                     printf("ssl reuse fast path for following pkts \n");
 #endif
                 }else{
@@ -889,8 +889,8 @@ http:
                 // checked protocol until detection completed as old logic, otherwise HTTP_Download may be missed
                 if(flow->ndpi_flow->http.url != NULL)
                 {
-#ifdef PRINT_FAST_PATH
                     flow->using_found_fast_path = 1;
+#ifdef PRINT_FAST_PATH
                     printf("http reuse fast path for following pkts \n");
 #endif
                 }else{
