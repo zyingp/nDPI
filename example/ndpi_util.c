@@ -742,12 +742,16 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
     return(flow->detected_protocol);
   }
 
-    uint8_t give_up_detection = 0;
+    // Don't need now
+    //uint8_t give_up_detection = 0;
     
 #ifdef USE_FAST_PATH
     
     if(flow->using_old_approach == 1)
     {
+        goto old_approach;
+    }else if(flow->using_found_fast_path == 1)
+    {   // also goto old_approach, but it will used include_protocol_ids
         goto old_approach;
     }
     
@@ -821,12 +825,15 @@ https:
                 // Do not need to clean saved packets here, but could do it in later collect_info
             }else{  // failed
                 // if we already found SNI, but still cannot match app protocol, then we could abort
-                if(flow->ndpi_flow->protos.ssl.client_certificate[0] != '\0')
+                // and don't try other protocols, however, we should continue to feed to previously
+                // tried protocol until detection complete, same as old logic
+                if(flow->ndpi_flow->protos.ssl.client_certificate[0] != '\0' ||
+                   flow->ndpi_flow->protos.ssl.server_certificate[0] != '\0')
                 {
 #ifdef PRINT_FAST_PATH
-                    printf("ssl give up here \n");
+                    flow->using_found_fast_path = 1;
+                    printf("ssl reuse fast path for following pkts \n");
 #endif
-                    give_up_detection = 1;
                 }else{
                     try_saved_packets_old_way(workflow->ndpi_struct, flow, 1, protocol_to_try);
                 }
@@ -878,13 +885,14 @@ http:
                 // Do not need to clean saved packets here, but could do it in later collect_info
             }else{  // failed
                 // We have found the url(confirming it's http), but we cannot find the matched site name,
-                // so abort since we'll never find
+                // so don't try other protocols since we'll never find, but we should always feed to previous
+                // checked protocol until detection completed as old logic, otherwise HTTP_Download may be missed
                 if(flow->ndpi_flow->http.url != NULL)
                 {
 #ifdef PRINT_FAST_PATH
-                    printf("http give up here \n");
+                    flow->using_found_fast_path = 1;
+                    printf("http reuse fast path for following pkts \n");
 #endif
-                    give_up_detection = 1;
                 }else{
                     try_saved_packets_old_way(workflow->ndpi_struct, flow, 1, protocol_to_try);
                 }
@@ -920,12 +928,21 @@ last:
 #endif
 
 
-    // TODO: extra a function and shared with method check_saved_pkt_if_never_checked    
+    // TODO zyp: extra a function and shared with method check_saved_pkt_if_never_checked
   if((flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
      || ((proto == IPPROTO_UDP) && ((flow->src2dst_packets + flow->dst2src_packets) > 8))
      || ((proto == IPPROTO_TCP) && ((flow->src2dst_packets + flow->dst2src_packets) > 10))
-     || give_up_detection == 1
      ) {
+
+#ifdef USE_FAST_PATH
+      // Since there may have unused saved pkts, we should run old process, otherwise saved pkts
+      // will be cleaned in process_ndpi_collected_info.
+      if(flow->saved_pkt_num > 0 && flow->saved_pkt_used == 0)
+      {
+          flow->detected_protocol = apply_saved_pkt(workflow->ndpi_struct, flow);
+      }
+#endif
+      
     /* New protocol detected or give up */
     flow->detection_completed = 1;
     /* Check if we should keep checking extra packets */

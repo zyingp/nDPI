@@ -78,6 +78,8 @@ typedef struct ndpi_flow_info {
 #ifdef USE_FAST_PATH
     // Abort this flow and use old approach
     uint8_t   using_old_approach;
+    // We have confirm its protocols by using fast path, and reusing the protocols for following pkts
+    uint8_t   using_found_fast_path;
     // Indicating whether we used the saved packet (1 for totally or partially used, 0 for never used)
     uint8_t   saved_pkt_used;
     
