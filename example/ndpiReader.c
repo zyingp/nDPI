@@ -69,10 +69,10 @@ static int current_num = 0;
 
 #endif
 
-#define MAX_LEFT_UNPROCESSED_FLOW 2000000
-static void * unprocessed_flowed[MAX_LEFT_UNPROCESSED_FLOW];
-static int unprocessed_num = 0;
-static int unprocessed_index = 0;
+//#define MAX_LEFT_UNPROCESSED_FLOW 2000000
+//static void * unprocessed_flowed[MAX_LEFT_UNPROCESSED_FLOW];
+//static int unprocessed_num = 0;
+//static int unprocessed_index = 0;
 
 
 #include "ndpi_util.h"
@@ -910,12 +910,15 @@ static void node_proto_guess_walker(const void *node, ndpi_VISIT which, int dept
 
   if((which == ndpi_preorder) || (which == ndpi_leaf)) { /* Avoid walking the same node multiple times */
 #ifdef USE_FAST_PATH
-      if(flow->saved_pkt_num > 0 && flow->saved_pkt_used == 0)
-      {
-          unprocessed_flowed[unprocessed_index] = flow;
-          ++unprocessed_index;
-          unprocessed_num = unprocessed_index;
-      }
+      // Some flows are small and may never reach the threshold of fast-path and not detected
+      check_saved_pkt_if_never_checked(ndpi_thread_info[0].workflow, flow);
+      
+//      if(flow->saved_pkt_num > 0 && flow->saved_pkt_used == 0)
+//      {
+//          unprocessed_flowed[unprocessed_index] = flow;
+//          ++unprocessed_index;
+//          unprocessed_num = unprocessed_index;
+//      }
 #endif
       if((!flow->detection_completed) && flow->ndpi_flow)
       flow->detected_protocol = ndpi_detection_giveup(ndpi_thread_info[0].workflow->ndpi_struct, flow->ndpi_flow);
@@ -1947,20 +1950,24 @@ static void printResults(u_int64_t tot_usec) {
   }
     
 #ifdef USE_FAST_PATH
-    struct timeval another_start;
-    gettimeofday(&another_start, NULL);
-    for(int i = 0; i< unprocessed_num; ++i)
-    {
-        // Some flows are small and may never reach the threshold of fast-path and not detected
-        check_saved_pkt_if_never_checked(ndpi_thread_info[0].workflow, unprocessed_flowed[i]);
-    }
-    struct timeval another_end;
-    gettimeofday(&another_end, NULL);
     
-    // zyp: temp add new end here for accurate measurment, since there is work in node_proto_guess_walker method
-    uint64_t additional = another_end.tv_sec*1000000 + another_end.tv_usec - (another_start.tv_sec*1000000 + another_start.tv_usec);
-    printf("fast path additional:%llu\n", additional);
-    tot_usec += additional;
+    gettimeofday(&end, NULL);
+    tot_usec = end.tv_sec*1000000 + end.tv_usec - (begin.tv_sec*1000000 + begin.tv_usec);
+    
+//    struct timeval another_start;
+//    gettimeofday(&another_start, NULL);
+//    for(int i = 0; i< unprocessed_num; ++i)
+//    {
+//        // Some flows are small and may never reach the threshold of fast-path and not detected
+//        check_saved_pkt_if_never_checked(ndpi_thread_info[0].workflow, unprocessed_flowed[i]);
+//    }
+//    struct timeval another_end;
+//    gettimeofday(&another_end, NULL);
+//
+//    // zyp: temp add new end here for accurate measurment, since there is work in node_proto_guess_walker method
+//    uint64_t additional = another_end.tv_sec*1000000 + another_end.tv_usec - (another_start.tv_sec*1000000 + another_start.tv_usec);
+//    printf("fast path additional:%llu\n", additional);
+//    tot_usec += additional;
 #endif
     extern int get_info_called_times;
     printf("get_info_called_times = %d\n", get_info_called_times);
