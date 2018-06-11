@@ -652,9 +652,9 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
   struct ndpi_proto nproto = { NDPI_PROTOCOL_UNKNOWN, NDPI_PROTOCOL_UNKNOWN };
     
 #ifdef PRINT_FAST_PATH
-  printf("current processing packet count %d\n", workflow->stats.raw_packet_count);
+    printf("current processing packet count %llu\n", workflow->stats.raw_packet_count);
 #endif
-    if(workflow->stats.raw_packet_count == 32)
+    if(workflow->stats.raw_packet_count == 1528)
     {
         printf("focus\n");
     }
@@ -834,7 +834,8 @@ https:
                 // and don't try other protocols, however, we should continue to feed to previously
                 // tried protocol until detection complete, same as old logic
                 if(flow->ndpi_flow->protos.ssl.client_certificate[0] != '\0' ||
-                   flow->ndpi_flow->protos.ssl.server_certificate[0] != '\0')
+                   flow->ndpi_flow->protos.ssl.server_certificate[0] != '\0' ||
+                   flow->ndpi_flow->l4.tcp.ssl_stage > 0)
                 {
                     flow->using_found_fast_path = 1;
                     used_fast_path_flow_num += 1;
