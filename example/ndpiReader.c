@@ -58,6 +58,23 @@
 #include <json.h>
 #endif
 
+//#define ENABLE_MEMORY_PKT_SOURCE
+
+
+#ifdef ENABLE_MEMORY_PKT_SOURCE
+#define MAX_PKT_NUM 2000000
+static void * pkt_headers[MAX_PKT_NUM];
+static void * pkt_content[MAX_PKT_NUM];
+static int current_num = 0;
+
+#endif
+
+#define MAX_LEFT_UNPROCESSED_FLOW 2000000
+static void * unprocessed_flowed[MAX_LEFT_UNPROCESSED_FLOW];
+static int unprocessed_num = 0;
+static int unprocessed_index = 0;
+
+
 #include "ndpi_util.h"
 
 /** Client parameters **/
@@ -893,8 +910,12 @@ static void node_proto_guess_walker(const void *node, ndpi_VISIT which, int dept
 
   if((which == ndpi_preorder) || (which == ndpi_leaf)) { /* Avoid walking the same node multiple times */
 #ifdef USE_FAST_PATH
-      // Some flows are small and may never reach the threshold of fast-path and not detected
-      check_saved_pkt_if_never_checked(ndpi_thread_info[0].workflow, flow);
+      if(flow->saved_pkt_num > 0 && flow->saved_pkt_used == 0)
+      {
+          unprocessed_flowed[unprocessed_index] = flow;
+          ++unprocessed_index;
+          unprocessed_num = unprocessed_index;
+      }
 #endif
       if((!flow->detection_completed) && flow->ndpi_flow)
       flow->detected_protocol = ndpi_detection_giveup(ndpi_thread_info[0].workflow->ndpi_struct, flow->ndpi_flow);
@@ -1924,6 +1945,25 @@ static void printResults(u_int64_t tot_usec) {
       cumulative_stats.packet_len[i] += ndpi_thread_info[thread_id].workflow->stats.packet_len[i];
     cumulative_stats.max_packet_len += ndpi_thread_info[thread_id].workflow->stats.max_packet_len;
   }
+    
+#ifdef USE_FAST_PATH
+    struct timeval another_start;
+    gettimeofday(&another_start, NULL);
+    for(int i = 0; i< unprocessed_num; ++i)
+    {
+        // Some flows are small and may never reach the threshold of fast-path and not detected
+        check_saved_pkt_if_never_checked(ndpi_thread_info[0].workflow, unprocessed_flowed[i]);
+    }
+    struct timeval another_end;
+    gettimeofday(&another_end, NULL);
+    
+    // zyp: temp add new end here for accurate measurment, since there is work in node_proto_guess_walker method
+    uint64_t additional = another_end.tv_sec*1000000 + another_end.tv_usec - (another_start.tv_sec*1000000 + another_start.tv_usec);
+    printf("fast path additional:%llu\n", additional);
+    tot_usec += additional;
+#endif
+    extern int get_info_called_times;
+    printf("get_info_called_times = %d\n", get_info_called_times);
 
   if(cumulative_stats.total_wire_bytes == 0)
     goto free_stats;
@@ -2311,7 +2351,7 @@ static pcap_t * openPcapFileOrDevice(u_int16_t thread_id, const u_char * pcap_fi
 
     live_capture = 0;
     num_threads = 1; /* Open pcap files in single threads mode */
-
+      
     /* trying to open a pcap file */
     if((pcap_handle = pcap_open_offline((char*)pcap_file, pcap_error_buffer)) == NULL) {
       char filename[256] = { 0 };
@@ -2330,7 +2370,7 @@ static pcap_t * openPcapFileOrDevice(u_int16_t thread_id, const u_char * pcap_fi
       if((!json_flag) && (!quiet_mode))
 	printf("Reading packets from pcap file %s...\n", pcap_file);
     }
-  } else {
+  }else {
     live_capture = 1;
 
     if((!json_flag) && (!quiet_mode))
@@ -2472,6 +2512,44 @@ static void pcap_process_packet(u_char *args,
   }
 }
 
+#ifdef ENABLE_MEMORY_PKT_SOURCE
+static int save_index = 0;
+static void read_packet_to_memory(u_char *args,
+                                const struct pcap_pkthdr *header,
+                                const u_char *packet)
+{
+    char *header_tmp = malloc(sizeof(struct pcap_pkthdr));
+    char *pkt_tmp = malloc(header->caplen);
+    memcpy(header_tmp, header, sizeof(struct pcap_pkthdr));
+    memcpy(pkt_tmp, packet, header->caplen);
+    pkt_headers[save_index] = header_tmp;
+    pkt_content[save_index] = pkt_tmp;
+    ++save_index;
+    current_num = save_index;
+}
+
+#endif
+
+
+#ifdef ENABLE_MEMORY_PKT_SOURCE
+
+/**
+ * @brief Call pcap_loop() to process packets from a live capture or savefile
+ */
+static void runPcapLoop(u_int16_t thread_id) {
+    if((!shutdown_app) && (ndpi_thread_info[thread_id].workflow->pcap_handle != NULL))
+    {
+        pcap_loop(ndpi_thread_info[thread_id].workflow->pcap_handle, -1, &read_packet_to_memory, (u_char*)&thread_id);
+        // reset the start time to begin here
+        gettimeofday(&begin, NULL);
+        for (int i = 0; i< current_num; ++i) {
+            pcap_process_packet((u_char*)&thread_id, pkt_headers[i], pkt_content[i]);
+        }
+    }
+}
+
+
+#else
 
 /**
  * @brief Call pcap_loop() to process packets from a live capture or savefile
@@ -2480,6 +2558,8 @@ static void runPcapLoop(u_int16_t thread_id) {
   if((!shutdown_app) && (ndpi_thread_info[thread_id].workflow->pcap_handle != NULL))
     pcap_loop(ndpi_thread_info[thread_id].workflow->pcap_handle, -1, &pcap_process_packet, (u_char*)&thread_id);
 }
+
+#endif
 
 /**
  * @brief Process a running thread

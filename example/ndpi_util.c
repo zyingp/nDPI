@@ -282,7 +282,7 @@ static void patchIPv6Address(char *str) {
 }
 
 /* ***************************************************** */
-
+int get_info_called_times = 0;
 static struct ndpi_flow_info *get_ndpi_flow_info(struct ndpi_workflow * workflow,
 						 const u_int8_t version,
 						 u_int16_t vlan_id,
@@ -305,6 +305,7 @@ static struct ndpi_flow_info *get_ndpi_flow_info(struct ndpi_workflow * workflow
   void *ret;
   u_int8_t *l3, *l4;
 
+    ++get_info_called_times;
   /*
     Note: to keep things simple (ndpiReader is just a demo app)
     we handle IPv6 a-la-IPv4.
