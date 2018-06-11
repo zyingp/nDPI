@@ -580,6 +580,8 @@ void process_ndpi_collected_info(struct ndpi_workflow * workflow, struct ndpi_fl
 
 #ifdef USE_FAST_PATH
 
+uint64_t used_fast_path_flow_num = 0;
+uint64_t used_fast_path_flow_num_failed = 0;
 static void try_saved_packets_fast_path(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_info *flow, int try_protocol_num, u_int16_t *protocol_ids)
 {
     flow->ndpi_flow->include_protocol_num = try_protocol_num;
@@ -613,7 +615,9 @@ static void try_fast_path(struct ndpi_detection_module_struct *ndpi_struct, stru
     if(flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
     {       // succeed
         // Do not need to clean saved packets here, but could do it in later collect_info
+        used_fast_path_flow_num +=1;
     }else{  // failed
+        used_fast_path_flow_num_failed += 1;
         try_saved_packets_old_way(ndpi_struct, flow, try_protocol_num, protocol_ids);
     }
 }
@@ -824,6 +828,7 @@ https:
             if(flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
             {       // succeed
                 // Do not need to clean saved packets here, but could do it in later collect_info
+                used_fast_path_flow_num +=1;
             }else{  // failed
                 // if we already found SNI, but still cannot match app protocol, then we could abort
                 // and don't try other protocols, however, we should continue to feed to previously
@@ -832,10 +837,12 @@ https:
                    flow->ndpi_flow->protos.ssl.server_certificate[0] != '\0')
                 {
                     flow->using_found_fast_path = 1;
+                    used_fast_path_flow_num += 1;
 #ifdef PRINT_FAST_PATH
                     printf("ssl reuse fast path for following pkts \n");
 #endif
                 }else{
+                    used_fast_path_flow_num_failed += 1;
                     try_saved_packets_old_way(workflow->ndpi_struct, flow, 1, protocol_to_try);
                 }
             }
@@ -884,6 +891,7 @@ http:
             if(flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
             {       // succeed
                 // Do not need to clean saved packets here, but could do it in later collect_info
+                used_fast_path_flow_num +=1;
             }else{  // failed
                 // We have found the url(confirming it's http), but we cannot find the matched site name,
                 // so don't try other protocols since we'll never find, but we should always feed to previous
@@ -891,10 +899,12 @@ http:
                 if(flow->ndpi_flow->http.url != NULL)
                 {
                     flow->using_found_fast_path = 1;
+                    used_fast_path_flow_num += 1;
 #ifdef PRINT_FAST_PATH
                     printf("http reuse fast path for following pkts \n");
 #endif
                 }else{
+                    used_fast_path_flow_num_failed += 1;
                     try_saved_packets_old_way(workflow->ndpi_struct, flow, 1, protocol_to_try);
                 }
             }

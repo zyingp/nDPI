@@ -2127,7 +2127,13 @@ static void printResults(u_int64_t tot_usec) {
   }
    
     extern uint64_t loop_count;
-    printf("loop_count: %ld", loop_count);
+    printf("loop_count: %llu\n", loop_count);
+#ifdef USE_FAST_PATH
+    extern uint64_t used_fast_path_flow_num;
+    printf("used_fast_path_flow_num_success: %llu\n", used_fast_path_flow_num);
+    extern uint64_t used_fast_path_flow_num_failed;
+    printf("used_fast_path_flow_num_failed: %llu\n", used_fast_path_flow_num_failed);
+#endif
 
   // printf("\n\nTotal Flow Traffic: %llu (diff: %llu)\n", total_flow_bytes, cumulative_stats.total_ip_bytes-total_flow_bytes);
 
