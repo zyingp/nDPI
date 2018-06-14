@@ -624,6 +624,8 @@ static void try_fast_path(struct ndpi_detection_module_struct *ndpi_struct, stru
 
 #endif
 
+uint64_t total_usec = 0;
+
 /* ****************************************************** */
 
 /**
@@ -671,6 +673,10 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
 			       &tcph, &udph, &sport, &dport,
 			       &src, &dst, &proto,
 			       &payload, &payload_len, &src_to_dst_direction);
+      
+      struct timeval start;
+    struct timeval end;
+      gettimeofday(&start, NULL);
 
   int port_to_check = src_to_dst_direction?dport:sport;
       
@@ -976,7 +982,12 @@ last:
     apply_unused_saved_pkt_as_extra_packet(workflow, flow);
     
 #endif
-
+    
+    gettimeofday(&end, NULL);
+    uint64_t one_usec = end.tv_sec*1000000 + end.tv_usec - (start.tv_sec*1000000 + start.tv_usec);
+    total_usec += one_usec;
+    //printf("one_usec=%llu\n", one_usec);
+    
   return(flow->detected_protocol);
 }
 
