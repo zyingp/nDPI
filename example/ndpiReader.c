@@ -1956,10 +1956,6 @@ static void printResults(u_int64_t tot_usec) {
     gettimeofday(&end, NULL);
     tot_usec = end.tv_sec*1000000 + end.tv_usec - (begin.tv_sec*1000000 + begin.tv_usec);
     
-    extern int get_info_called_times;
-    printf("get_info_called_times = %d\n", get_info_called_times);
-    extern uint64_t total_usec;
-    printf("total_usec = %llu\n", total_usec);
 
   if(cumulative_stats.total_wire_bytes == 0)
     goto free_stats;
@@ -2123,6 +2119,11 @@ static void printResults(u_int64_t tot_usec) {
     extern uint64_t used_fast_path_flow_num_failed;
     printf("used_fast_path_flow_num_failed: %llu\n", used_fast_path_flow_num_failed);
 #endif
+    
+    extern int get_info_called_times;
+    printf("get_info_called_times = %d\n", get_info_called_times);
+    extern uint64_t total_usec;
+    printf("total_usec = %llu\n", total_usec);
 
   // printf("\n\nTotal Flow Traffic: %llu (diff: %llu)\n", total_flow_bytes, cumulative_stats.total_ip_bytes-total_flow_bytes);
 
