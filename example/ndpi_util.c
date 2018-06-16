@@ -656,10 +656,10 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
 #ifdef PRINT_FAST_PATH
     printf("current processing packet count %llu\n", workflow->stats.raw_packet_count);
 #endif
-    if(workflow->stats.raw_packet_count == 1528)
-    {
-        printf("focus\n");
-    }
+//    if(workflow->stats.raw_packet_count == 1528)
+//    {
+//        printf("focus\n");
+//    }
 
   if(iph)
     flow = get_ndpi_flow_info(workflow, IPVERSION, vlan_id, iph, NULL,

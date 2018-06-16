@@ -69,6 +69,8 @@ static int current_num = 0;
 
 #endif
 
+uint64_t total_pkt_usec =  0;
+
 //#define MAX_LEFT_UNPROCESSED_FLOW 2000000
 //static void * unprocessed_flowed[MAX_LEFT_UNPROCESSED_FLOW];
 //static int unprocessed_num = 0;
@@ -920,6 +922,7 @@ static void node_proto_guess_walker(const void *node, ndpi_VISIT which, int dept
       gettimeofday(&end, NULL);
       uint64_t one_usec = end.tv_sec*1000000 + end.tv_usec - (start.tv_sec*1000000 + start.tv_usec);
       total_usec += one_usec;
+      total_pkt_usec += one_usec;
       //printf("in guess one_usec=%llu\n", one_usec);
       
 #endif
@@ -2124,6 +2127,12 @@ static void printResults(u_int64_t tot_usec) {
     printf("get_info_called_times = %d\n", get_info_called_times);
     extern uint64_t total_usec;
     printf("total_usec = %llu\n", total_usec);
+    
+    printf("total_pkt_usec = %llu\n", total_pkt_usec);
+    
+    printf("packet_per_second = %f\n", ((double)cumulative_stats.raw_packet_count)/total_pkt_usec*1000000);
+    
+    printf("bytes_per_second = %f\n",((double)cumulative_stats.total_wire_bytes)/total_pkt_usec*1000000);
 
   // printf("\n\nTotal Flow Traffic: %llu (diff: %llu)\n", total_flow_bytes, cumulative_stats.total_ip_bytes-total_flow_bytes);
 
@@ -2404,6 +2413,10 @@ static void pcap_process_packet(u_char *args,
   struct ndpi_proto p;
   u_int16_t thread_id = *((u_int16_t*)args);
   uint8_t donot_free_pkt = 0;  // 1 means not free packet here (will freed by the fast-path module)
+    
+    struct timeval start;
+    struct timeval end;
+    gettimeofday(&start, NULL);
 
   /* allocate an exact size buffer to check overflows */
   uint8_t *packet_checked = malloc(header->caplen);
@@ -2513,6 +2526,11 @@ static void pcap_process_packet(u_char *args,
     memcpy(&begin, &end, sizeof(begin));
     memcpy(&pcap_start, &pcap_end, sizeof(pcap_start));
   }
+    
+    gettimeofday(&end, NULL);
+    uint64_t one_usec = end.tv_sec*1000000 + end.tv_usec - (start.tv_sec*1000000 + start.tv_usec);
+    total_pkt_usec += one_usec;
+    //printf("one_pkt_usec=%llu\n", one_usec);
 }
 
 #ifdef ENABLE_MEMORY_PKT_SOURCE
