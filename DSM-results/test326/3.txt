@@ -1,0 +1,95 @@
+
+-----------------------------------------------------------
+* NOTE: This is demo app to show *some* nDPI features.
+* In this demo we have implemented only some basic features
+* just to show you what you can do with the library. Feel 
+* free to extend it and send us the patches for inclusion
+------------------------------------------------------------
+
+Using nDPI (2.3.0-1205-7185e1f) [1 thread(s)]
+Reading packets from pcap file ./test326.pcap...
+Running thread 0...
+
+nDPI Memory statistics:
+	nDPI Memory (once):      203.65 KB    
+	Flow Memory (per flow):  1.95 KB      
+	Actual Memory:           64.88 MB     
+	Peak Memory:             64.88 MB     
+
+Traffic statistics:
+	Ethernet bytes:        337406597     (includes ethernet CRC/IFC/trailer)
+	Discarded bytes:       319312       
+	IP packets:            1383399       of 1383572 packets total
+	IP bytes:              304205021     (avg pkt size 219 bytes)
+	Unique flows:          24970        
+	TCP Packets:           1190563      
+	UDP Packets:           52919        
+	VLAN Packets:          0            
+	MPLS Packets:          0            
+	PPPoE Packets:         0            
+	Fragmented Packets:    13           
+	Max Packet size:       59902        
+	Packet Len < 64:       1051165      
+	Packet Len 64-128:     60995        
+	Packet Len 128-256:    49589        
+	Packet Len 256-1024:   101257       
+	Packet Len 1024-1500:  120386       
+	Packet Len > 1500:     7            
+	nDPI throughput:       1.78 M pps / 3.24 Gb/sec
+	Analysis begin:        04/Jun/2018 13:05:16
+	Analysis end:          08/Jun/2018 10:20:10
+	Traffic throughput:    4.12 pps / 7.85 Kb/sec
+	Traffic duration:      335694.219 sec
+	Guessed flow protos:   4189         
+
+
+Detected protocols:
+	Unknown              packets: 65013         bytes: 11037561      flows: 1390         
+	POP3                 packets: 5445          bytes: 346549        flows: 124          
+	SMTP                 packets: 78            bytes: 38975         flows: 1            
+	DNS                  packets: 3149          bytes: 239888        flows: 900          
+	HTTP                 packets: 391311        bytes: 70128684      flows: 9045         
+	NTP                  packets: 156           bytes: 14040         flows: 32           
+	SNMP                 packets: 7524          bytes: 902568        flows: 1            
+	BitTorrent           packets: 2             bytes: 202           flows: 2            
+	QQ                   packets: 94584         bytes: 14035910      flows: 1596         
+	IMAPS                packets: 30915         bytes: 3666555       flows: 97           
+	HTTP_Download        packets: 31280         bytes: 5560530       flows: 937          
+	SSL_No_Cert          packets: 2799          bytes: 547342        flows: 95           
+	MSN                  packets: 91            bytes: 22751         flows: 9            
+	Telnet               packets: 765           bytes: 44336         flows: 15           
+	STUN                 packets: 11971         bytes: 1163918       flows: 45           
+	ICMP                 packets: 138222        bytes: 7564213       flows: 83           
+	SSL                  packets: 486815        bytes: 173478000     flows: 7161         
+	SIP                  packets: 58            bytes: 6331          flows: 5            
+	Facebook             packets: 266           bytes: 20268         flows: 6            
+	Skype                packets: 22            bytes: 10987         flows: 2            
+	Google               packets: 28115         bytes: 3163594       flows: 1137         
+	HTTP_Proxy           packets: 8754          bytes: 1291729       flows: 141          
+	Apple                packets: 2755          bytes: 679600        flows: 18           
+	AppleiCloud          packets: 3953          bytes: 1087181       flows: 24           
+	WindowsUpdate        packets: 541           bytes: 39576         flows: 2            
+	FTP_DATA             packets: 2750          bytes: 1420872       flows: 46           
+	Amazon               packets: 4136          bytes: 355744        flows: 31           
+	Sina(Weibo)          packets: 51143         bytes: 5305454       flows: 1470         
+	iQIYI                packets: 1606          bytes: 188446        flows: 75           
+	Microsoft            packets: 981           bytes: 91902         flows: 124          
+	MS_OneDrive          packets: 24            bytes: 1552          flows: 8            
+	PlayStore            packets: 419           bytes: 418796        flows: 14           
+	ApplePush            packets: 1537          bytes: 260302        flows: 26           
+	GoogleServices       packets: 6219          bytes: 1070665       flows: 308          
+
+
+Protocol statistics:
+	Safe                     178752924 bytes
+	Acceptable                91309777 bytes
+	Fun                       19550078 bytes
+	Unsafe                      391087 bytes
+	Unrated                    3163594 bytes
+	Unrated                   11037561 bytes
+loop_count: 3182961
+get_info_called_times = 1383399
+total_usec = 312762
+total_pkt_usec = 588965
+packet_per_second = 2349158.269167
+bytes_per_second = 572880556.569575
