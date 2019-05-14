@@ -13,11 +13,8 @@
 		E3953F5920254989000BBA0D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E3953F5820254989000BBA0D /* Assets.xcassets */; };
 		E3953F5C2025498A000BBA0D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E3953F5A2025498A000BBA0D /* Main.storyboard */; };
 		E3953F5F2025498A000BBA0D /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = E3953F5E2025498A000BBA0D /* main.m */; };
-		E395430B20255354000BBA0D /* Makefile.am in Resources */ = {isa = PBXBuildFile; fileRef = E39540A520255353000BBA0D /* Makefile.am */; };
 		E395430C20255354000BBA0D /* ndpi_define.h.in in Resources */ = {isa = PBXBuildFile; fileRef = E39540A720255353000BBA0D /* ndpi_define.h.in */; };
 		E395431720255354000BBA0D /* Makefile in Sources */ = {isa = PBXBuildFile; fileRef = E39540BC20255353000BBA0D /* Makefile */; };
-		E395431820255354000BBA0D /* Makefile.am in Resources */ = {isa = PBXBuildFile; fileRef = E39540BD20255353000BBA0D /* Makefile.am */; };
-		E395431920255354000BBA0D /* Makefile.in in Resources */ = {isa = PBXBuildFile; fileRef = E39540BE20255353000BBA0D /* Makefile.in */; };
 		E395431A20255354000BBA0D /* Makefile.simple in Resources */ = {isa = PBXBuildFile; fileRef = E39540BF20255353000BBA0D /* Makefile.simple */; };
 		E395431B20255354000BBA0D /* ndpi_content_match.c.inc in Sources */ = {isa = PBXBuildFile; fileRef = E39540C020255353000BBA0D /* ndpi_content_match.c.inc */; };
 		E395431C20255354000BBA0D /* ndpi_main.c in Sources */ = {isa = PBXBuildFile; fileRef = E39540C120255353000BBA0D /* ndpi_main.c */; };
@@ -770,13 +767,10 @@
 			files = (
 				E395430C20255354000BBA0D /* ndpi_define.h.in in Resources */,
 				E395431A20255354000BBA0D /* Makefile.simple in Resources */,
-				E395430B20255354000BBA0D /* Makefile.am in Resources */,
-				E395431920255354000BBA0D /* Makefile.in in Resources */,
 				E3953F5920254989000BBA0D /* Assets.xcassets in Resources */,
 				E39547942026B2AA000BBA0D /* capture.pcap in Resources */,
 				E395455D202558E6000BBA0D /* protos.txt in Resources */,
 				E3953F5C2025498A000BBA0D /* Main.storyboard in Resources */,
-				E395431820255354000BBA0D /* Makefile.am in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
