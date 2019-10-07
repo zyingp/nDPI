@@ -237,7 +237,8 @@ void ndpi_search_dns(struct ndpi_detection_module_struct *ndpi_struct, struct nd
       flow->host_server_name[j] = '\0';
 
       if(is_query && (ndpi_struct->dns_dont_dissect_response == 0)) {
-	// dpi_set_detected_protocol(ndpi_struct, flow, (d_port == 5355) ? NDPI_PROTOCOL_LLMNR : NDPI_PROTOCOL_DNS, NDPI_PROTOCOL_UNKNOWN);	
+          // uncomment, since some data only has upstream side traffic, zyp for dsm
+	 ndpi_set_detected_protocol(ndpi_struct, flow, (d_port == 5355) ? NDPI_PROTOCOL_LLMNR : NDPI_PROTOCOL_DNS, NDPI_PROTOCOL_UNKNOWN);	
 	return; /* The response will set the verdict */
       }
 

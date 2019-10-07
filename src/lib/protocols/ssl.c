@@ -408,55 +408,55 @@ int getSSLcertificate(struct ndpi_detection_module_struct *ndpi_struct,
 
 	  offset += session_id_len+1;
 
-	  ja3.num_cipher = 1, ja3.cipher[0] = ntohs(*((u_int16_t*)&packet->payload[offset]));
-
-#ifdef CERTIFICATE_DEBUG
-	  printf("SSL [server][session_id_len: %u][cipher: %04X]\n", session_id_len, ja3.cipher[0]);
-#endif
-
-	  offset += 2 + 1;
-	  extension_len = ntohs(*((u_int16_t*)&packet->payload[offset]));
-
-#ifdef CERTIFICATE_DEBUG
-	  printf("SSL [server][extension_len: %u]\n", extension_len);
-#endif
-	  offset += 2;
-
-	  for(i=0; i<extension_len; ) {
-	    u_int16_t id, len;
-
-	    if(offset >= (packet->payload_packet_len+4)) break;
-
-	    id  = ntohs(*((u_int16_t*)&packet->payload[offset]));
-	    len = ntohs(*((u_int16_t*)&packet->payload[offset+2]));
-
-	    if(ja3.num_ssl_extension < MAX_NUM_JA3)
-	      ja3.ssl_extension[ja3.num_ssl_extension++] = id;
-
-#ifdef CERTIFICATE_DEBUG
-	    printf("SSL [server][extension_id: %u]\n", id);
-#endif
-
-	    i += 4 + len, offset += 4 + len;
-	  }
-
-	  ja3_str_len = snprintf(ja3_str, sizeof(ja3_str), "%u,", ja3.ssl_version);
-
-	  for(i=0; i<ja3.num_cipher; i++)
-	    ja3_str_len += snprintf(&ja3_str[ja3_str_len], sizeof(ja3_str)-ja3_str_len, "%s%u", (i > 0) ? "-" : "", ja3.cipher[i]);
-
-	  ja3_str_len += snprintf(&ja3_str[ja3_str_len], sizeof(ja3_str)-ja3_str_len, ",");
-
-	  /* ********** */
-
-	  for(i=0; i<ja3.num_ssl_extension; i++)
-	    ja3_str_len += snprintf(&ja3_str[ja3_str_len], sizeof(ja3_str)-ja3_str_len, "%s%u", (i > 0) ? "-" : "", ja3.ssl_extension[i]);
-
-#ifdef CERTIFICATE_DEBUG
-	  printf("SSL [server] %s\n", ja3_str);
-#endif
-
-	  flow->l4.tcp.ssl_seen_server_cert = 1;
+//      ja3.num_cipher = 1, ja3.cipher[0] = ntohs(*((u_int16_t*)&packet->payload[offset]));
+//
+//#ifdef CERTIFICATE_DEBUG
+//      printf("SSL [server][session_id_len: %u][cipher: %04X]\n", session_id_len, ja3.cipher[0]);
+//#endif
+//
+//      offset += 2 + 1;
+//      extension_len = ntohs(*((u_int16_t*)&packet->payload[offset]));
+//
+//#ifdef CERTIFICATE_DEBUG
+//      printf("SSL [server][extension_len: %u]\n", extension_len);
+//#endif
+//      offset += 2;
+//
+//      for(i=0; i<extension_len; ) {
+//        u_int16_t id, len;
+//
+//        if(offset >= (packet->payload_packet_len+4)) break;
+//
+//        id  = ntohs(*((u_int16_t*)&packet->payload[offset]));
+//        len = ntohs(*((u_int16_t*)&packet->payload[offset+2]));
+//
+//        if(ja3.num_ssl_extension < MAX_NUM_JA3)
+//          ja3.ssl_extension[ja3.num_ssl_extension++] = id;
+//
+//#ifdef CERTIFICATE_DEBUG
+//        printf("SSL [server][extension_id: %u]\n", id);
+//#endif
+//
+//        i += 4 + len, offset += 4 + len;
+//      }
+//
+//      ja3_str_len = snprintf(ja3_str, sizeof(ja3_str), "%u,", ja3.ssl_version);
+//
+//      for(i=0; i<ja3.num_cipher; i++)
+//        ja3_str_len += snprintf(&ja3_str[ja3_str_len], sizeof(ja3_str)-ja3_str_len, "%s%u", (i > 0) ? "-" : "", ja3.cipher[i]);
+//
+//      ja3_str_len += snprintf(&ja3_str[ja3_str_len], sizeof(ja3_str)-ja3_str_len, ",");
+//
+//      /* ********** */
+//
+//      for(i=0; i<ja3.num_ssl_extension; i++)
+//        ja3_str_len += snprintf(&ja3_str[ja3_str_len], sizeof(ja3_str)-ja3_str_len, "%s%u", (i > 0) ? "-" : "", ja3.ssl_extension[i]);
+//
+//#ifdef CERTIFICATE_DEBUG
+//      printf("SSL [server] %s\n", ja3_str);
+//#endif
+//
+//      flow->l4.tcp.ssl_seen_server_cert = 1;
 	} else
 	  flow->l4.tcp.ssl_seen_certificate = 1;
 
@@ -551,15 +551,15 @@ int getSSLcertificate(struct ndpi_detection_module_struct *ndpi_struct,
 #ifdef CERTIFICATE_DEBUG
 	      printf("SSL [cypher suite: %u] [%u/%u]\n", ntohs(*id), i, cypher_len);
 #endif
-	      if((*id == 0) || (packet->payload[cypher_offset+i] != packet->payload[cypher_offset+i+1])) {
-		/* 
-		   Skip GREASE [https://tools.ietf.org/id/draft-ietf-tls-grease-01.html]
-		   https://engineering.salesforce.com/tls-fingerprinting-with-ja3-and-ja3s-247362855967
-		 */
-		
-		if(ja3.num_cipher < MAX_NUM_JA3)
-		  ja3.cipher[ja3.num_cipher++] = ntohs(*id);
-	      }
+//          if((*id == 0) || ( packet->payload[cypher_offset+i] != packet->payload[cypher_offset+i+1])) {
+//        /* 
+//           Skip GREASE [https://tools.ietf.org/id/draft-ietf-tls-grease-01.html]
+//           https://engineering.salesforce.com/tls-fingerprinting-with-ja3-and-ja3s-247362855967
+//         */
+//        
+//        if(ja3.num_cipher < MAX_NUM_JA3)
+//          ja3.cipher[ja3.num_cipher++] = ntohs(*id);
+//          }
 	      
 	      i += 2;
 	    }
@@ -680,10 +680,10 @@ int getSSLcertificate(struct ndpi_detection_module_struct *ndpi_struct,
 
 		  ja3_str_len = snprintf(ja3_str, sizeof(ja3_str), "%u,", ja3.ssl_version);
 
-		  for(i=0; i<ja3.num_cipher; i++)
-		    ja3_str_len += snprintf(&ja3_str[ja3_str_len], sizeof(ja3_str)-ja3_str_len, "%s%u", (i > 0) ? "-" : "", ja3.cipher[i]);
-
-		  ja3_str_len += snprintf(&ja3_str[ja3_str_len], sizeof(ja3_str)-ja3_str_len, ",");
+//          for(i=0; i<ja3.num_cipher; i++)
+//            ja3_str_len += snprintf(&ja3_str[ja3_str_len], sizeof(ja3_str)-ja3_str_len, "%s%u", (i > 0) ? "-" : "", ja3.cipher[i]);
+//
+//          ja3_str_len += snprintf(&ja3_str[ja3_str_len], sizeof(ja3_str)-ja3_str_len, ",");
 
 		  /* ********** */
 

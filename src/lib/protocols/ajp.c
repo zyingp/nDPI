@@ -81,7 +81,7 @@ static void ndpi_check_ajp(struct ndpi_detection_module_struct *ndpi_struct,
     return;
   }
 
-  ajp_hdr = *((struct ajp_header *) (packet->payload));
+  ajp_hdr = *((struct ajp_header *) (&(packet->payload)));
   ajp_hdr.magic = ntohs(ajp_hdr.magic);
   ajp_hdr.len = ntohs(ajp_hdr.len);
 

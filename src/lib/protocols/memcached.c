@@ -105,7 +105,7 @@ void ndpi_search_memcached(
 {
     struct ndpi_packet_struct *packet = &flow->packet;
     const u_int8_t *offset = packet->payload;
-    const u_int16_t length = packet->payload_packet_len;
+    u_int16_t length = packet->payload_packet_len;
     u_int8_t *matches;
 
     NDPI_LOG_DBG(ndpi_struct, "search memcached\n");
@@ -143,6 +143,8 @@ void ndpi_search_memcached(
      *  sed -e 's/^#define //g' |\
      *  awk '{ printf "else if (! MEMCACHED_MATCH(%s)) *matches += 1;\n",$1 }' */
 
+    length = length -  (uint16_t)(offset - packet->payload);
+    
     if (! MEMCACHED_MATCH(MCDC_SET)) *matches += 1;
     else if (! MEMCACHED_MATCH(MCDC_ADD)) *matches += 1;
     else if (! MEMCACHED_MATCH(MCDC_REPLACE)) *matches += 1;
