@@ -1,0 +1,33 @@
+/*
+The parser listed in try_parser could be using raw id as well, like ID_51 for NDPI_PROTOCOL_MAIL_IMAPS
+ABORT_DETECION for aborting detection early
+*/
+
+
+
+#HTTPS, will continue processing if the TLS type is determined but the application protocol is not determined yet
+enter:protocol==tcp && (server_port==443||server_port==993||server_port==465) per_packet:{if (payload_len>=5 && (payload[0]==20||payload[0]==22||payload[0]==23)) then {tls_pkt_num=tls_pkt_num+1;};} match:tls_pkt_num>=1 && payload_pkt_num>=1 try_parser:NDPI_PROTOCOL_SSL
+#||server_port==2100||server_port==2001  
+#payload_pkt_num>=3 for both side traffics
+
+#HTTP, will continue processing if the HTTP type is determined but the application protocol is not determined yet
+enter:protocol==tcp && (server_port==80 || server_port==8080) match:payload_pkt_num>=1 && payload_len>2 && (payload[0]=='G' || payload[0]=='P') try_parser:NDPI_PROTOCOL_HTTP,NDPI_PROTOCOL_HTTP_ACTIVESYNC,NDPI_PROTOCOL_BITTORRENT
+
+#Teamviewer
+enter:protocol==tcp && server_port==5938 match:payload_pkt_num>=1 && payload_len>2 try_parser:NDPI_PROTOCOL_TEAMVIEWER
+
+#FTP
+enter:protocol==tcp && server_port==21 match:payload_pkt_num>=4 && payload_len>=5 && payload[0]=='P' try_parser:NDPI_PROTOCOL_FTP_CONTROL
+#POP3
+enter:protocol==tcp && server_port==110 match:payload_pkt_num>=2 && payload_len>=5 && payload[0]=='U' try_parser:NDPI_PROTOCOL_MAIL_POP
+
+#RDP
+enter:protocol==tcp && server_port==3389 match:payload_pkt_num>=1 && payload_len>10 && payload[0]<4 try_parser:ID_88
+
+#SSH need both side traffic  NDPI_PROTOCOL_SSH
+enter:protocol==tcp && server_port==22 match:payload_pkt_num>=2 && payload_len>7 && payload[0]=='S' try_parser:ID_92
+
+#XMPP  It seems XMPP jabber is not fully recognized according to rfc6120
+#enter:protocol==tcp && (server_port==5222 || server_port==5269) match:payload_pkt_num>=1 && payload_len>2 && payload[0]=='<' try_parser:NDPI_PROTOCOL_UNENCRYPTED_JABBER
+
+

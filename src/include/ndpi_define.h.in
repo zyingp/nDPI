@@ -41,6 +41,9 @@
 #endif/* BYTE_ORDER */
 #endif/* __OPENBSD__ */
 
+/* Define whether we enable fast path*/
+#define USE_FAST_PATH 1
+
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #ifndef __LITTLE_ENDIAN__

@@ -82,6 +82,9 @@ void ndpi_free_flow_info_half(struct ndpi_flow_info *flow) {
   if(flow->ndpi_flow) { ndpi_flow_free(flow->ndpi_flow); flow->ndpi_flow = NULL; }
   if(flow->src_id)    { ndpi_free(flow->src_id); flow->src_id = NULL; }
   if(flow->dst_id)    { ndpi_free(flow->dst_id); flow->dst_id = NULL; }
+#ifdef USE_FAST_PATH
+    clean_saved_packets(flow);  // for fast path
+#endif //USE_FAST_PATH
 }
 
 /* ***************************************************** */
@@ -288,7 +291,7 @@ static void patchIPv6Address(char *str) {
 }
 
 /* ***************************************************** */
-
+int get_info_called_times = 0;
 static struct ndpi_flow_info *get_ndpi_flow_info(struct ndpi_workflow * workflow,
 						 const u_int8_t version,
 						 u_int16_t vlan_id,
@@ -311,6 +314,8 @@ static struct ndpi_flow_info *get_ndpi_flow_info(struct ndpi_workflow * workflow
   void *ret;
   const u_int8_t *l3, *l4;
 
+    ++get_info_called_times;
+    
   /*
     Note: to keep things simple (ndpiReader is just a demo app)
     we handle IPv6 a-la-IPv4.
@@ -406,6 +411,7 @@ static struct ndpi_flow_info *get_ndpi_flow_info(struct ndpi_workflow * workflow
       exit(-1);
     } else {
       struct ndpi_flow_info *newflow = (struct ndpi_flow_info*)malloc(sizeof(struct ndpi_flow_info));
+        memset(newflow, 0, sizeof(struct ndpi_flow_info));
 
       if(newflow == NULL) {
 	NDPI_LOG(0, workflow->ndpi_struct, NDPI_LOG_ERROR, "[NDPI] %s(1): not enough memory\n", __FUNCTION__);
@@ -430,12 +436,15 @@ static struct ndpi_flow_info *get_ndpi_flow_info(struct ndpi_workflow * workflow
 	patchIPv6Address(newflow->src_name), patchIPv6Address(newflow->dst_name);
       }
 
+#ifndef USE_FAST_PATH
+     // ^ For fast path, only assign ndpi_flow_struct after start to call parsers
       if((newflow->ndpi_flow = ndpi_flow_malloc(SIZEOF_FLOW_STRUCT)) == NULL) {
 	NDPI_LOG(0, workflow->ndpi_struct, NDPI_LOG_ERROR, "[NDPI] %s(2): not enough memory\n", __FUNCTION__);
 	free(newflow);
 	return(NULL);
       } else
 	memset(newflow->ndpi_flow, 0, SIZEOF_FLOW_STRUCT);
+#endif
 
       if((newflow->src_id = ndpi_malloc(SIZEOF_ID_STRUCT)) == NULL) {
 	NDPI_LOG(0, workflow->ndpi_struct, NDPI_LOG_ERROR, "[NDPI] %s(3): not enough memory\n", __FUNCTION__);
@@ -588,6 +597,143 @@ void process_ndpi_collected_info(struct ndpi_workflow * workflow, struct ndpi_fl
   }
 }
 
+#ifdef USE_FAST_PATH
+
+uint64_t used_fast_path_flow_num = 0;
+uint64_t used_fast_path_flow_num_failed = 0;
+static void try_saved_packets_fast_path(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_info *flow, int try_protocol_num, u_int16_t *protocol_ids)
+{
+    create_ndpi_flow_if_not(flow);
+    flow->ndpi_flow->include_protocol_num = try_protocol_num;
+    for (int i = 0 ; i < try_protocol_num; ++i) {
+        flow->ndpi_flow->include_protocol_ids[i] = protocol_ids[i];
+    }
+    flow->detected_protocol = apply_saved_pkt(ndpi_struct, flow);
+}
+
+static void try_saved_packets_old_way(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_info *flow, int try_protocol_num, u_int16_t *protocol_ids)
+{
+    // Create new ndpi_flow, since old one has already been used by several packets
+    if(flow->ndpi_flow != NULL){
+        ndpi_free(flow->ndpi_flow);
+    }
+    flow->ndpi_flow = create_ndpi_flow();
+    
+    /* We'd better not add it to exclude protocols, since we may not sure it is not of that type
+    // Transfer the tried protocol to exclude protocols
+    flow->ndpi_flow->exclude_protocol_num = try_protocol_num;
+    for (int i = 0 ; i < try_protocol_num; ++i) {
+        flow->ndpi_flow->exclude_protocol_ids[i] = protocol_ids[i];
+    }
+    */
+    flow->ndpi_flow->include_protocol_num = 0;  //clean
+    // Apply the saved packets again using old approach
+    flow->detected_protocol = apply_saved_pkt(ndpi_struct, flow);
+    // Treat future packets by old approach
+    flow->using_old_approach = 1;
+}
+
+uint8_t is_of_protocol_type(struct ndpi_flow_info *flow, int try_protocol_num, u_int16_t *protocol_ids)
+{
+    uint8_t result = 0;
+    switch (protocol_ids[0]) {
+        case NDPI_PROTOCOL_SSL:
+            // if we already found SNI, but still cannot match app protocol, then we could abort
+            // and don't try other protocols, however, we should continue to feed to previously
+            // tried protocol until detection complete, same as old logic
+            result = (flow->ndpi_flow->protos.stun_ssl.ssl.client_certificate[0] != '\0' ||
+                      flow->ndpi_flow->protos.stun_ssl.ssl.server_certificate[0] != '\0' ||
+                      flow->ndpi_flow->l4.tcp.ssl_stage > 0);
+            break;
+        case NDPI_PROTOCOL_HTTP:
+            // We have found the url(confirming it's http), but we cannot find the matched site name,
+            // so don't try other protocols since we'll never find, but we should always feed to previous
+            // checked protocol until detection completed as old logic, otherwise HTTP_Download may be missed
+            result = (flow->ndpi_flow->http.url != NULL);
+            break;
+            
+        default:
+            break;
+    }
+    return result;
+}
+
+static void evaluate_perpacket(struct ndpi_flow_info *flow)
+{
+    if(tcprules[flow->rule_index]->perpacket != NULL)
+    {
+        eval(tcprules[flow->rule_index]->perpacket, &(flow->flow_data));
+    }
+}
+
+static void evaluate_matchexp_proceed(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_info *flow)
+{
+    double result = eval(tcprules[flow->rule_index]->matchexp, &(flow->flow_data));
+    if(result == 1)
+    {
+        u_int16_t protocol_to_try[MAX_POSSIBLE_PROTOCOLS];
+        int to_try_num = 0;
+        struct parserlist * pl = tcprules[flow->rule_index]->parserlist;
+        while(pl != NULL)
+        {
+            protocol_to_try[to_try_num++] = pl->protoid;
+            pl = pl->next;
+        }
+        
+        if(to_try_num ==1 && protocol_to_try[0] == ABORT_DETECTION_PROTOCOL_ID)
+        {
+            flow->is_aborted = 1;
+            create_ndpi_flow_if_not(flow);
+            used_fast_path_flow_num +=1;
+        }else
+        {
+            try_saved_packets_fast_path(ndpi_struct, flow, to_try_num, protocol_to_try);
+            
+            if(flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
+            {       // succeed
+                // Do not need to clean saved packets here, but could do it in later collect_info
+                used_fast_path_flow_num +=1;
+            }else
+            {       // failed to directly recognize
+                if(is_of_protocol_type(flow, to_try_num, protocol_to_try))
+                {
+                    flow->using_found_fast_path = 1;
+                    used_fast_path_flow_num += 1;
+                }else
+                {
+                    used_fast_path_flow_num_failed += 1;
+                    try_saved_packets_old_way(ndpi_struct, flow, to_try_num, protocol_to_try);
+                }
+            }
+        }
+    }
+}
+
+static uint8_t check_rule_determined_by_enterexp(u_int8_t proto, struct ndpi_flow_info *flow)
+{
+    if(proto == IPPROTO_TCP)
+    {
+        double result = 0;
+        for(int i = 0; i < tcprule_size; ++i)
+        {
+            result = eval(tcprules[i]->enterexp, &(flow->flow_data));
+            if(result == 1)
+            {
+                flow->determing_rule = 1;
+                flow->rule_index = i;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+
+#endif
+
+uint64_t total_usec = 0;
+uint64_t global_raw_pkt_count = 0;
+
 /* ****************************************************** */
 
 /**
@@ -603,7 +749,7 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
 					   const struct ndpi_iphdr *iph,
 					   struct ndpi_ipv6hdr *iph6,
 					   u_int16_t ip_offset,
-					   u_int16_t ipsize, u_int16_t rawsize) {
+					   u_int16_t ipsize, u_int16_t rawsize, uint8_t *packet_checked, uint8_t *donot_free_pkt) {
   struct ndpi_id_struct *src, *dst;
   struct ndpi_flow_info *flow = NULL;
   struct ndpi_flow_struct *ndpi_flow = NULL;
@@ -615,6 +761,21 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
   u_int8_t src_to_dst_direction = 1;
   struct ndpi_proto nproto = { NDPI_PROTOCOL_UNKNOWN, NDPI_PROTOCOL_UNKNOWN };
 
+#ifdef PRINT_FAST_PATH
+    extern uint64_t loop_count;
+    printf("current processing packet count %llu, flow_count %u, use_fp_num %llu, use_fail_num %llu, loop_count %llu \n", workflow->stats.raw_packet_count, workflow->stats.ndpi_flow_count, used_fast_path_flow_num, used_fast_path_flow_num_failed, loop_count);
+#else
+ #ifdef PRINT_OLD_PATH
+    printf("current processing packet count %llu, flow_count %llu, loop_count %llu \n", workflow->stats.ndpi_flow_count, workflow->stats.raw_packet_count, loop_count);
+ #endif
+#endif
+    
+    global_raw_pkt_count = workflow->stats.raw_packet_count;
+    if(workflow->stats.raw_packet_count == 215)
+    {
+        printf("focus\n");
+    }
+    
   if(iph)
     flow = get_ndpi_flow_info(workflow, IPVERSION, vlan_id, iph, NULL,
 			      ip_offset, ipsize,
@@ -628,6 +789,13 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
 			       &src, &dst, &proto,
 			       &payload, &payload_len, &src_to_dst_direction);
 
+      struct timeval start;
+    struct timeval end;
+    gettimeofday(&start, NULL);
+    
+    int port_to_check = src_to_dst_direction?dport:sport;
+    
+    
   if(flow != NULL) {
     workflow->stats.ip_packet_count++;
     workflow->stats.total_wire_bytes += rawsize + 24 /* CRC etc */,
@@ -640,6 +808,22 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
       flow->dst2src_packets++, flow->dst2src_bytes += rawsize;
 
     flow->last_seen = time;
+ 
+#ifdef USE_FAST_PATH
+      
+      flow->flow_data.protocol = proto;
+      flow->flow_data.server_port = port_to_check;
+      flow->flow_data.pkt_num = flow->flow_data.pkt_num + 1;
+      if(payload_len >0)
+      {
+          flow->flow_data.payload_pkt_num = flow->flow_data.payload_pkt_num + 1;
+      }
+      flow->flow_data.payload_len = payload_len;
+      flow->flow_data.payload = payload;
+      
+      
+#endif
+      
   } else { // flow is NULL
     workflow->stats.total_discarded_bytes++;
     return(nproto);
@@ -670,26 +854,108 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
     return(flow->detected_protocol);
   }
 
+
+#ifdef USE_FAST_PATH
+    
+    if(flow->using_old_approach == 1 || flow->using_found_fast_path == 1)
+                                    // ^ also goto old_approach, but it will used include_protocol_ids
+    {
+        create_ndpi_flow_if_not(flow);
+        flow->detected_protocol =
+        ndpi_detection_process_packet(workflow->ndpi_struct, flow->ndpi_flow,
+                                      iph ? (uint8_t *)iph : (uint8_t *)iph6,
+                                      ipsize, time, src, dst);
+    }else
+    {
+        
+        if(flow->determing_rule == 1 || check_rule_determined_by_enterexp(proto, flow) == 1)
+          // ^The enter_exp of a rule has already been satisifed  or  ^ Newly find a DSM rule
+        {
+            // Save the packet for later use
+            save_current_packet(flow, time, iph, iph6, ipsize, src, dst, packet_checked, donot_free_pkt
+#ifdef PRINT_FAST_PATH
+                                ,workflow->stats.raw_packet_count
+#endif
+                                );
+#ifdef PRINT_FAST_PATH
+            // printf("save the packet \n");
+#endif
+            evaluate_perpacket(flow);
+            evaluate_matchexp_proceed(workflow->ndpi_struct,flow);
+        }else
+        {
+            flow->using_old_approach = 1;
+            create_ndpi_flow_if_not(flow);
+            flow->detected_protocol =
+            ndpi_detection_process_packet(workflow->ndpi_struct, flow->ndpi_flow,
+                                          iph ? (uint8_t *)iph : (uint8_t *)iph6,
+                                          ipsize, time, src, dst);
+        }
+    }
+    
+
+    
+#else  // else for not USE_FAST_PATH
+    
   flow->detected_protocol =
     ndpi_detection_process_packet(workflow->ndpi_struct, ndpi_flow,
 				  iph ? (uint8_t *)iph : (uint8_t *)iph6,
 				  ipsize, time, src, dst);
+    
+#endif
 
+  // TODO zyp: extra a function and shared with method check_saved_pkt_if_never_checked
   if((flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
+#ifdef USE_FAST_PATH
+     || flow->is_aborted == 1  // the protocol is not supported in nDPI yet
+#endif
      || ((proto == IPPROTO_UDP) && ((flow->src2dst_packets + flow->dst2src_packets) > 8))
      || ((proto == IPPROTO_TCP) && ((flow->src2dst_packets + flow->dst2src_packets) > 10))) {
+      
+#ifdef USE_FAST_PATH
+      // Since there may have unused saved pkts, we should run old process, otherwise saved pkts
+      // will be cleaned in process_ndpi_collected_info.
+      if(flow->is_aborted != 1 && flow->saved_pkt_num > 0 && flow->saved_pkt_used == 0)
+      {
+          create_ndpi_flow_if_not(flow);
+          flow->detected_protocol = apply_saved_pkt(workflow->ndpi_struct, flow);
+      }
+#endif
+      
     /* New protocol detected or give up */
     flow->detection_completed = 1;
     /* Check if we should keep checking extra packets */
-    if(ndpi_flow->check_extra_packets)
+    if(flow->ndpi_flow->check_extra_packets)
+         // ^since the ndpi_flow inside flow_info may be replaced, so always fetch
       flow->check_extra_packets = 1;
 
-    if(flow->detected_protocol.app_protocol == NDPI_PROTOCOL_UNKNOWN)
-      flow->detected_protocol = ndpi_detection_giveup(workflow->ndpi_struct, flow->ndpi_flow,
-						      enable_protocol_guess);
+      if(flow->detected_protocol.app_protocol == NDPI_PROTOCOL_UNKNOWN){
+#ifdef USE_FAST_PATH
+          create_ndpi_flow_if_not(flow);
+#endif
+          flow->detected_protocol = ndpi_detection_giveup(workflow->ndpi_struct, flow->ndpi_flow,
+                                  enable_protocol_guess);
+      }
     
     process_ndpi_collected_info(workflow, flow);
   }
+    
+    
+
+    
+#ifdef USE_FAST_PATH
+    
+    // TODO: maybe useless
+    // If there are some unused packet after using fast-path approach, we should feed them into extra packet processing
+    apply_unused_saved_pkt_as_extra_packet(workflow, flow);
+    
+#endif
+    
+    gettimeofday(&end, NULL);
+    uint64_t one_usec = end.tv_sec*1000000 + end.tv_usec - (start.tv_sec*1000000 + start.tv_usec);
+    total_usec += one_usec;
+    //printf("one_usec=%llu\n", one_usec); // usually is <100
+
 
   return(flow->detected_protocol);
 }
@@ -698,7 +964,7 @@ static struct ndpi_proto packet_processing(struct ndpi_workflow * workflow,
 
 struct ndpi_proto ndpi_workflow_process_packet (struct ndpi_workflow * workflow,
 						const struct pcap_pkthdr *header,
-						const u_char *packet) {
+						const u_char *packet,  uint8_t *donot_free_pkt) {
   /*
    * Declare pointers to packet headers
    */
@@ -1040,7 +1306,7 @@ iph_check:
 
   /* process the packet */
   return(packet_processing(workflow, time, vlan_id, iph, iph6,
-			   ip_offset, header->caplen - ip_offset, header->caplen));
+			   ip_offset, header->caplen - ip_offset, header->caplen, packet, donot_free_pkt));
 }
 
 /* ********************************************************** */

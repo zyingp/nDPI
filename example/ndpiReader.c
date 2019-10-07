@@ -53,10 +53,32 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <libgen.h>
+#include "dsm.h"
 
 #ifdef HAVE_JSON_C
 #include <json.h>
 #endif
+
+
+//#define ENABLE_MEMORY_PKT_SOURCE
+
+
+#ifdef ENABLE_MEMORY_PKT_SOURCE
+#define MAX_PKT_NUM 2000000
+static void * pkt_headers[MAX_PKT_NUM];
+static void * pkt_content[MAX_PKT_NUM];
+static int current_num = 0;
+
+#endif
+
+uint64_t total_pkt_usec =  0;
+
+//#define MAX_LEFT_UNPROCESSED_FLOW 2000000
+//static void * unprocessed_flowed[MAX_LEFT_UNPROCESSED_FLOW];
+//static int unprocessed_num = 0;
+//static int unprocessed_index = 0;
+
+
 
 #include "ndpi_util.h"
 
@@ -67,6 +89,7 @@ static FILE *results_file           = NULL;
 static char *results_path           = NULL;
 static char * bpfFilter             = NULL; /**< bpf filter  */
 static char *_protoFilePath         = NULL; /**< Protocol file path  */
+static char *_dsmFilePath           = NULL; /**< DSM rule file path  */
 static char *_customCategoryFilePath= NULL; /**< Custom categories file path  */
 #ifdef HAVE_JSON_C
 static char *_statsFilePath         = NULL; /**< Top stats file path */
@@ -475,7 +498,7 @@ static void parseOptions(int argc, char **argv) {
   }
 #endif
 
-  while((opt = getopt_long(argc, argv, "c:df:g:i:hp:l:s:tv:V:n:j:rp:w:q0123:456:7:89:m:b:x:", longopts, &option_idx)) != EOF) {
+    while((opt = getopt_long(argc, argv, "c:df:g:i:hp:l:s:tv:V:n:j:rp:w:q0123:456:7:89:m:b:x:y:", longopts, &option_idx)) != EOF) {
 #ifdef DEBUG_TRACE
     if(trace) fprintf(trace, " #### -%c [%s] #### \n", opt, optarg ? optarg : "");
 #endif
@@ -532,6 +555,10 @@ static void parseOptions(int argc, char **argv) {
     case 'p':
       _protoFilePath = optarg;
       break;
+            
+    case 'y':
+        _dsmFilePath = optarg;
+        break;
 
     case 'c':
       _customCategoryFilePath = optarg;
@@ -928,10 +955,48 @@ static void node_proto_guess_walker(const void *node, ndpi_VISIT which, int dept
   u_int16_t thread_id = *((u_int16_t *) user_data);
 
   if((which == ndpi_preorder) || (which == ndpi_leaf)) { /* Avoid walking the same node multiple times */
+      
+#ifdef USE_FAST_PATH
+      // Some flows are small and may never reach the threshold of fast-path and not detected
+      extern uint64_t total_usec;
+      struct timeval start;
+      struct timeval end;
+      gettimeofday(&start, NULL);
+      uint8_t newly_alloc_flow = check_saved_pkt_if_never_checked(ndpi_thread_info[0].workflow, flow);
+      
+      gettimeofday(&end, NULL);
+      uint64_t one_usec = end.tv_sec*1000000 + end.tv_usec - (start.tv_sec*1000000 + start.tv_usec);
+      total_usec += one_usec;
+      total_pkt_usec += one_usec;
+      //printf("in guess one_usec=%llu\n", one_usec);
+      
+#endif
+      
     if((!flow->detection_completed) && flow->ndpi_flow)
       flow->detected_protocol = ndpi_detection_giveup(ndpi_thread_info[0].workflow->ndpi_struct, flow->ndpi_flow, enable_protocol_guess);
 
     process_ndpi_collected_info(ndpi_thread_info[thread_id].workflow, flow);
+      
+#ifdef USE_FAST_PATH
+      {
+          // Free useless ndpi_flow
+          extern uint64_t total_usec;
+          struct timeval start;
+          struct timeval end;
+          gettimeofday(&start, NULL);
+
+          if (newly_alloc_flow && flow->ndpi_flow != NULL) {
+              free(flow->ndpi_flow);
+              flow->ndpi_flow = NULL;
+          }
+          
+          gettimeofday(&end, NULL);
+          uint64_t one_usec = end.tv_sec*1000000 + end.tv_usec - (start.tv_sec*1000000 + start.tv_usec);
+          total_usec += one_usec;
+          total_pkt_usec += one_usec;
+          //printf("in free one_usec=%llu\n", one_usec);
+      }
+#endif
 
     ndpi_thread_info[thread_id].workflow->stats.protocol_counter[flow->detected_protocol.app_protocol]       += flow->src2dst_packets + flow->dst2src_packets;
     ndpi_thread_info[thread_id].workflow->stats.protocol_counter_bytes[flow->detected_protocol.app_protocol] += flow->src2dst_bytes + flow->dst2src_bytes;
@@ -1398,6 +1463,24 @@ static void node_idle_scan_walker(const void *node, ndpi_VISIT which, int depth,
       /* adding to a queue (we can't delete it from the tree inline ) */
       ndpi_thread_info[thread_id].idle_flows[ndpi_thread_info[thread_id].num_idle_flows++] = flow;
     }
+#ifdef USE_FAST_PATH
+    else if(flow->determing_rule == 1 && flow->saved_pkt_num > 0 && flow->saved_pkt_used == 0 && flow->last_seen + MAX_FAST_PATH_IDLE_TIME < ndpi_thread_info[thread_id].workflow->last_time)
+    {
+        // In live mode, some flows are stuck and may not reach the threshold of fast-path in time,
+        // let them
+        extern uint64_t total_usec;
+        struct timeval start;
+        struct timeval end;
+        gettimeofday(&start, NULL);
+        check_saved_pkt_if_never_checked(ndpi_thread_info[0].workflow, flow);
+
+        gettimeofday(&end, NULL);
+        uint64_t one_usec = end.tv_sec*1000000 + end.tv_usec - (start.tv_sec*1000000 + start.tv_usec);
+        total_usec += one_usec;
+        total_pkt_usec += one_usec;
+        //printf("in avoiding stuck one_usec=%llu\n", one_usec);
+    }
+#endif
   }
 }
 
@@ -1494,6 +1577,16 @@ static void setupDetection(u_int16_t thread_id, pcap_t * pcap_handle) {
 
   if(_protoFilePath != NULL)
     ndpi_load_protocols_file(ndpi_thread_info[thread_id].workflow->ndpi_struct, _protoFilePath);
+    
+  if(_dsmFilePath != NULL)
+  {
+      extern FILE*  yyin;
+      if(!(yyin = fopen(_dsmFilePath, "r"))) {
+          perror(_dsmFilePath);
+      }
+      int ret = yyparse();
+      printf("parse dsm rule file result: %d\n", ret);
+  }
 
   if(_customCategoryFilePath) {
     FILE *fd = fopen(_customCategoryFilePath, "r");
@@ -1959,7 +2052,12 @@ static void printResults(u_int64_t processing_time_usec, u_int64_t setup_time_us
       cumulative_stats.packet_len[i] += ndpi_thread_info[thread_id].workflow->stats.packet_len[i];
     cumulative_stats.max_packet_len += ndpi_thread_info[thread_id].workflow->stats.max_packet_len;
   }
-
+    
+    // Unifiy the end time of fast-path (DSM) and original method.
+    gettimeofday(&end, NULL);
+    processing_time_usec = end.tv_sec*1000000 + end.tv_usec - (begin.tv_sec*1000000 + begin.tv_usec);
+    
+    
   if(cumulative_stats.total_wire_bytes == 0)
     goto free_stats;
 
@@ -2122,6 +2220,29 @@ static void printResults(u_int64_t processing_time_usec, u_int64_t setup_time_us
     }
   }
 
+
+    extern uint64_t loop_count;
+    printf("loop_count: %llu\n", loop_count);
+#ifdef USE_FAST_PATH
+    extern uint64_t used_fast_path_flow_num;
+    printf("used_fast_path_flow_num_success: %llu\n", used_fast_path_flow_num);
+    extern uint64_t used_fast_path_flow_num_failed;
+    printf("used_fast_path_flow_num_failed: %llu\n", used_fast_path_flow_num_failed);
+#endif
+    
+    extern int get_info_called_times;
+    printf("get_info_called_times = %d\n", get_info_called_times);
+    extern uint64_t total_usec;
+    printf("total_usec = %llu\n", total_usec);
+    
+    printf("total_pkt_usec = %llu\n", total_pkt_usec);
+    
+    printf("packet_per_second = %f\n", ((double)cumulative_stats.raw_packet_count)/total_pkt_usec*1000000);
+    
+    printf("bytes_per_second = %f\n",((double)cumulative_stats.total_wire_bytes)/total_pkt_usec*1000000);
+
+    
+    
   // printf("\n\nTotal Flow Traffic: %llu (diff: %llu)\n", total_flow_bytes, cumulative_stats.total_ip_bytes-total_flow_bytes);
 
   if((verbose == 1) || (verbose == 2)) {
@@ -2421,12 +2542,18 @@ static void ndpi_process_packet(u_char *args,
 				const u_char *packet) {
   struct ndpi_proto p;
   u_int16_t thread_id = *((u_int16_t*)args);
-
+    
+    uint8_t donot_free_pkt = 0;  // 1 means not free packet here (will freed by the fast-path module)
+    
+    struct timeval start;
+    struct timeval end;
+    gettimeofday(&start, NULL);
+    
   /* allocate an exact size buffer to check overflows */
   uint8_t *packet_checked = malloc(header->caplen);
 
   memcpy(packet_checked, packet, header->caplen);
-  p = ndpi_workflow_process_packet(ndpi_thread_info[thread_id].workflow, header, packet_checked);
+  p = ndpi_workflow_process_packet(ndpi_thread_info[thread_id].workflow, header, packet_checked, &donot_free_pkt);
 
   if((capture_until != 0) && (header->ts.tv_sec >= capture_until)) {
     if(ndpi_thread_info[thread_id].workflow->pcap_handle != NULL)
@@ -2502,10 +2629,12 @@ static void ndpi_process_packet(u_char *args,
   }
 
   /* check for buffer changes */
-  if(memcmp(packet, packet_checked, header->caplen) != 0)
-    printf("INTERNAL ERROR: ingress packet was modified by nDPI: this should not happen [thread_id=%u, packetId=%lu, caplen=%u]\n",
-	   thread_id, (unsigned long)ndpi_thread_info[thread_id].workflow->stats.raw_packet_count, header->caplen);
+//  if(memcmp(packet, packet_checked, header->caplen) != 0)
+//    printf("INTERNAL ERROR: ingress packet was modified by nDPI: this should not happen [thread_id=%u, packetId=%lu, caplen=%u]\n",
+//	   thread_id, (unsigned long)ndpi_thread_info[thread_id].workflow->stats.raw_packet_count, header->caplen);
 
+
+    
   if((pcap_end.tv_sec-pcap_start.tv_sec) > pcap_analysis_duration) {
     int i;
     u_int64_t processing_time_usec, setup_time_usec;
@@ -2534,9 +2663,33 @@ static void ndpi_process_packet(u_char *args,
      Leave the free as last statement to avoid crashes when ndpi_detection_giveup()
      is called above by printResults()
   */
-  free(packet_checked);
+    if(donot_free_pkt == 0){
+        free(packet_checked);
+    }
+    gettimeofday(&end, NULL);
+    uint64_t one_usec = end.tv_sec*1000000 + end.tv_usec - (start.tv_sec*1000000 + start.tv_usec);
+    total_pkt_usec += one_usec;
+    //printf("one_pkt_usec=%llu\n", one_usec);
+    
 }
 
+#ifdef ENABLE_MEMORY_PKT_SOURCE
+static int save_index = 0;
+static void read_packet_to_memory(u_char *args,
+                                  const struct pcap_pkthdr *header,
+                                  const u_char *packet)
+{
+    char *header_tmp = malloc(sizeof(struct pcap_pkthdr));
+    char *pkt_tmp = malloc(header->caplen);
+    memcpy(header_tmp, header, sizeof(struct pcap_pkthdr));
+    memcpy(pkt_tmp, packet, header->caplen);
+    pkt_headers[save_index] = header_tmp;
+    pkt_content[save_index] = pkt_tmp;
+    ++save_index;
+    current_num = save_index;
+}
+
+#endif
 
 /**
  * @brief Call pcap_loop() to process packets from a live capture or savefile
@@ -2544,6 +2697,14 @@ static void ndpi_process_packet(u_char *args,
 static void runPcapLoop(u_int16_t thread_id) {
   if((!shutdown_app) && (ndpi_thread_info[thread_id].workflow->pcap_handle != NULL))
     pcap_loop(ndpi_thread_info[thread_id].workflow->pcap_handle, -1, &ndpi_process_packet, (u_char*)&thread_id);
+    
+#ifdef ENABLE_MEMORY_PKT_SOURCE
+    // reset the start time to begin here
+    gettimeofday(&begin, NULL);
+    for (int i = 0; i< current_num; ++i) {
+        pcap_process_packet((u_char*)&thread_id, pkt_headers[i], pkt_content[i]);
+    }
+ #endif
 }
 
 /**

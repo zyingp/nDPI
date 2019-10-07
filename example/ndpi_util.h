@@ -30,6 +30,7 @@
 #define __NDPI_UTIL_H__
 
 #include <pcap.h>
+#include "dsm.h"
 
 #ifdef USE_DPDK
 #include <rte_eal.h>
@@ -52,6 +53,7 @@ extern int dpdk_port_init(int port, struct rte_mempool *mbuf_pool);
 #define MAX_NUM_READER_THREADS     16
 #define IDLE_SCAN_PERIOD           10 /* msec (use TICK_RESOLUTION = 1000) */
 #define MAX_IDLE_TIME           30000
+#define MAX_FAST_PATH_IDLE_TIME  2000  /* msec for avoid stuck in fast-path*/
 #define IDLE_SCAN_BUDGET         1024
 #define NUM_ROOTS                 512
 #define MAX_EXTRA_PACKETS_TO_CHECK  7
@@ -73,6 +75,38 @@ extern int dpdk_port_init(int port, struct rte_mempool *mbuf_pool);
 #define MAX_TABLE_SIZE_2         8192
 #define INIT_VAL                   -1
 
+// The max saved packet number for fast path
+#define MAX_SAVED_PKT_NUM        11
+//#define PRINT_FAST_PATH
+// The max possible protocols for a rule
+#define MAX_POSSIBLE_PROTOCOLS    5
+
+
+#ifdef USE_FAST_PATH
+
+typedef struct ndpi_savepkt_info
+{
+    uint8_t * saved_packets[MAX_SAVED_PKT_NUM];
+    
+    // is iph6 not iph? 1 for yes
+    uint8_t    is_iph6[MAX_SAVED_PKT_NUM];
+    // src is src but not dst, 1 for yes
+    uint8_t src_is_src[MAX_SAVED_PKT_NUM];
+    // offset to saved_packets, real iph/iph6 = saved_packets + iphoffset
+    uint8_t  iphoffset[MAX_SAVED_PKT_NUM];
+    
+    u_int16_t                ipsize[MAX_SAVED_PKT_NUM];
+    u_int64_t                  time[MAX_SAVED_PKT_NUM];
+//    struct ndpi_id_struct      *src[MAX_SAVED_PKT_NUM], *dst[MAX_SAVED_PKT_NUM];
+#ifdef PRINT_FAST_PATH
+    // The original number of the saved packet, for debug only
+    u_int64_t      packet_origin_no[MAX_SAVED_PKT_NUM];
+#endif
+    
+}ndpi_savepkt_info_t;
+
+#endif
+
 // flow tracking
 typedef struct ndpi_flow_info {
   u_int32_t hashval;
@@ -89,6 +123,32 @@ typedef struct ndpi_flow_info {
   u_int64_t src2dst_bytes, dst2src_bytes;
   u_int32_t src2dst_packets, dst2src_packets;
 
+#ifdef USE_FAST_PATH
+    // Abort this flow and use old approach
+    uint8_t   using_old_approach:1,
+    // We have confirmed its protocols by using fast path, and reusing the protocols for following pkts
+    using_found_fast_path:1,
+    // Indicating whether we used the saved packet (1 for totally or partially used, 0 for never used)
+    saved_pkt_used:1,
+    // Indicating whether we determine the DSM rule to use (for matching thge matchexp)
+    determing_rule:1,
+    // Indicating that the flow is aborted for DPI since its protocol is not implemented yet
+    is_aborted;
+    
+    // Save evaluation values for each flow
+    struct dsm_flow_data flow_data;
+
+    // The determined DSM rule's index in the rule array
+    uint8_t rule_index;
+    
+    // The number of saved packets
+    uint8_t  saved_pkt_num:4,
+    used_pkt_num:4;          // the num of used packets in fast-path detection,
+                             // and the unused ones should sent to process extra packet
+    struct ndpi_savepkt_info *savepkt_info;
+    
+#endif
+    
   // result only, not used for flow identification
   ndpi_protocol detected_protocol;
 
@@ -176,7 +236,7 @@ void ndpi_free_flow_info_half(struct ndpi_flow_info *flow);
 /* Process a packet and update the workflow  */
 struct ndpi_proto ndpi_workflow_process_packet(struct ndpi_workflow * workflow,
 					       const struct pcap_pkthdr *header,
-					       const u_char *packet);
+					       const u_char *packet, uint8_t *donot_free_pkt);
 
 
 /* flow callbacks for complete detected flow
@@ -192,6 +252,193 @@ static inline void ndpi_workflow_set_flow_giveup_callback(struct ndpi_workflow *
   workflow->__flow_giveup_callback = callback;
   workflow->__flow_giveup_udata = udata;
 }
+
+
+#ifdef USE_FAST_PATH
+
+static inline void save_current_packet(struct ndpi_flow_info *flow,
+                                       const u_int64_t time,
+                                       const struct ndpi_iphdr *iph,
+                                       struct ndpi_ipv6hdr *iph6,
+                                       u_int16_t ipsize,
+                                       struct ndpi_id_struct *src, struct ndpi_id_struct *dst,
+                                       uint8_t *packet_checked, uint8_t *donot_free_pkt
+#ifdef PRINT_FAST_PATH
+                                       // The original number of the saved packet, for debug only
+                                       ,u_int64_t      packet_origin_no
+#endif
+)
+{
+    
+#ifdef PRINT_FAST_PATH
+    printf("to save packet 0x%llx, original no:%llu\n", (uint64_t)(packet_checked), packet_origin_no);
+#endif
+    if (flow->saved_pkt_num >= MAX_SAVED_PKT_NUM) {
+        printf("error: save too many packets, either enlarge buffer or do not save so many pkts.\n");
+    }
+    if (flow->savepkt_info == NULL) {
+        flow->savepkt_info = malloc(sizeof(struct ndpi_savepkt_info));
+        if (flow->savepkt_info != NULL) {
+            memset(flow->savepkt_info, 0, sizeof(struct ndpi_savepkt_info));
+        }else{
+            printf("error: creating ndpi_savepkt_info\n");
+            return;
+        }
+    }
+    flow->savepkt_info->saved_packets[flow->saved_pkt_num] = packet_checked;
+    if(iph != NULL)
+    {
+        flow->savepkt_info->iphoffset[flow->saved_pkt_num] = (char*)iph - (char*)packet_checked;
+    }else{
+        flow->savepkt_info->is_iph6[flow->saved_pkt_num] = 1;
+        flow->savepkt_info->iphoffset[flow->saved_pkt_num] = (char*)iph6 - (char*)packet_checked;
+    }
+    flow->savepkt_info->ipsize[flow->saved_pkt_num] =ipsize;
+    flow->savepkt_info->time[flow->saved_pkt_num] = time;
+    flow->savepkt_info->src_is_src[flow->saved_pkt_num] = (src == flow->src_id)?1:0 ;
+#ifdef PRINT_FAST_PATH
+    // The original number of the saved packet, for debug only
+    flow->savepkt_info->packet_origin_no[flow->saved_pkt_num] = packet_origin_no;
+#endif
+    
+    (flow->saved_pkt_num) ++;
+    *donot_free_pkt = (uint8_t)1;
+    
+}
+
+static inline struct ndpi_flow_struct * create_ndpi_flow()
+{
+    struct ndpi_flow_struct * ndpi_flow = ndpi_flow_malloc(SIZEOF_FLOW_STRUCT);
+    if (ndpi_flow != NULL) {
+        memset(ndpi_flow, 0, SIZEOF_FLOW_STRUCT);
+    }
+    return ndpi_flow;
+}
+
+static inline uint8_t create_ndpi_flow_if_not(struct ndpi_flow_info *flow_info)
+{
+    if (flow_info->ndpi_flow == NULL) {
+        flow_info->ndpi_flow = create_ndpi_flow();
+        return 1;
+    }
+    return 0;
+}
+
+static inline void clean_saved_packets(struct ndpi_flow_info *flow_info)
+{
+    for (int i = 0; i< flow_info->saved_pkt_num; ++i) {
+#ifdef PRINT_FAST_PATH
+        //printf("to free saved packet 0x%llx, original no:%llu\n", (uint64_t)(flow_info->saved_packets[i]), flow_info->packet_origin_no[i]);
+#endif
+        free( flow_info->savepkt_info->saved_packets[i] );
+        flow_info->savepkt_info->saved_packets[i] = NULL;
+    }
+    flow_info->saved_pkt_num = 0;
+    free( flow_info->savepkt_info);
+    flow_info->savepkt_info = NULL;
+}
+
+static inline ndpi_protocol apply_saved_pkt(struct ndpi_detection_module_struct *ndpi_struct, struct ndpi_flow_info *flow_info)
+{
+    ndpi_protocol ret = { NDPI_PROTOCOL_UNKNOWN, NDPI_PROTOCOL_UNKNOWN, NDPI_PROTOCOL_CATEGORY_UNSPECIFIED };
+    flow_info->saved_pkt_used = 1;
+    flow_info->used_pkt_num = 0;
+    for (int i = 0; i< flow_info->saved_pkt_num; ++i) {
+#ifdef PRINT_FAST_PATH
+        printf("applying saved index=%d packet, original no:%llu\n", i, flow_info->savepkt_info->packet_origin_no[i]);
+#endif
+        ret =
+        ndpi_detection_process_packet(ndpi_struct, flow_info->ndpi_flow, flow_info->savepkt_info->saved_packets[i] + flow_info->savepkt_info->iphoffset[i],
+                                      flow_info->savepkt_info->ipsize[i], flow_info->savepkt_info->time[i],
+                                      (struct ndpi_id_struct *)((flow_info->savepkt_info->src_is_src[i] == 1)?flow_info->src_id:flow_info->dst_id),
+                                      (struct ndpi_id_struct *)((flow_info->savepkt_info->src_is_src[i] == 1)?flow_info->dst_id:flow_info->src_id));
+        ++(flow_info->used_pkt_num);
+        if (ret.app_protocol != NDPI_PROTOCOL_UNKNOWN) {
+            break;
+        }
+    }
+    return ret;
+}
+
+// Pre-declaration
+void process_ndpi_collected_info(struct ndpi_workflow * workflow, struct ndpi_flow_info *flow) ;
+
+static inline void apply_unused_saved_pkt_as_extra_packet(struct ndpi_workflow * workflow,
+                                                          struct ndpi_flow_info *flow)
+{
+    // If there are some unused packet after using fast-path approach, we should feed them into extra packet processing
+    /* Protocol already detected */
+    if(flow->detection_completed && flow->used_pkt_num < flow->saved_pkt_num ) { //&& flow->using_old_approach == 1
+        if(flow->check_extra_packets && flow->ndpi_flow != NULL && flow->ndpi_flow->check_extra_packets) {
+            if(flow->ndpi_flow->num_extra_packets_checked == 0 && flow->ndpi_flow->max_extra_packets_to_check == 0) {
+                /* Protocols can set this, but we set it here in case they didn't */
+                flow->ndpi_flow->max_extra_packets_to_check = MAX_EXTRA_PACKETS_TO_CHECK;
+            }
+            for( int i = flow->used_pkt_num; i < flow->saved_pkt_num; ++i){
+                if(flow->ndpi_flow->num_extra_packets_checked < flow->ndpi_flow->max_extra_packets_to_check) {
+                    create_ndpi_flow_if_not(flow);
+                    ndpi_process_extra_packet(workflow->ndpi_struct, flow->ndpi_flow, flow->savepkt_info->saved_packets[i] + flow->savepkt_info->iphoffset[i],
+                     flow->savepkt_info->ipsize[i], flow->savepkt_info->time[i],
+                     (struct ndpi_id_struct *)((flow->savepkt_info->src_is_src[i] == 1)?flow->src_id:flow->dst_id),
+                     (struct ndpi_id_struct *)((flow->savepkt_info->src_is_src[i] == 1)?flow->dst_id:flow->src_id));
+                    if (flow->ndpi_flow->check_extra_packets == 0) {
+                        flow->check_extra_packets = 0;
+                        process_ndpi_collected_info(workflow, flow);
+                    }
+                }
+            }
+            flow->used_pkt_num = flow->saved_pkt_num;  // mark all as used
+            
+        } else if (flow->ndpi_flow != NULL) {
+            /* If this wasn't NULL we should do the half free */
+            /* TODO: When half_free is deprecated, get rid of this */
+            ndpi_free_flow_info_half(flow);
+        }
+    }
+    
+}
+
+extern u_int8_t enable_protocol_guess;
+static inline uint8_t check_saved_pkt_if_never_checked(struct ndpi_workflow * workflow, struct ndpi_flow_info *flow)
+{
+    uint8_t new_alloc = 0;
+    if(flow->saved_pkt_num > 0 && flow->saved_pkt_used == 0)
+    {
+        // Do not count not enough packets case
+        //extern uint64_t used_fast_path_flow_num_failed;
+        //used_fast_path_flow_num_failed += 1;
+        
+        new_alloc = create_ndpi_flow_if_not(flow);
+        flow->detected_protocol = apply_saved_pkt(workflow->ndpi_struct, flow);
+        
+        if((flow->detected_protocol.app_protocol != NDPI_PROTOCOL_UNKNOWN)
+           || ((flow->protocol == IPPROTO_UDP) && ((flow->src2dst_packets + flow->dst2src_packets) > 8))
+           || ((flow->protocol == IPPROTO_TCP) && ((flow->src2dst_packets + flow->dst2src_packets) > 10))
+           ) {
+            /* New protocol detected or give up */
+            flow->detection_completed = 1;
+            /* Check if we should keep checking extra packets */
+            if (flow->ndpi_flow->check_extra_packets)
+                // ^since the ndpi_flow inside flow_info may be replaced, so always fetch
+                flow->check_extra_packets = 1;
+            
+            if(flow->detected_protocol.app_protocol == NDPI_PROTOCOL_UNKNOWN)
+                flow->detected_protocol = ndpi_detection_giveup(workflow->ndpi_struct,
+                                                                flow->ndpi_flow, enable_protocol_guess);
+            process_ndpi_collected_info(workflow, flow);
+        }
+        
+        // Free saved packets immediately
+        clean_saved_packets(flow);
+        
+        // TODO: here should check apply extra packet if needed
+    }
+    return new_alloc;
+}
+
+#endif // USE_FAST_PATH
+
+
 
  /* compare two nodes in workflow */
 int ndpi_workflow_node_cmp(const void *a, const void *b);

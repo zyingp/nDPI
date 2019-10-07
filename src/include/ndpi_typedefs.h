@@ -1021,6 +1021,9 @@ struct ndpi_detection_module_struct {
   
 #endif /* NDPI_LIB_COMPILATION */
 
+// For fast path
+#define MAX_INCLUDE_EXCLUDE_PROTOCOL_NUM 5
+
 struct ndpi_flow_struct {
   u_int16_t detected_protocol_stack[NDPI_PROTOCOL_SIZE];
 #ifndef WIN32
@@ -1032,6 +1035,13 @@ struct ndpi_flow_struct {
   u_int16_t guessed_protocol_id, guessed_host_protocol_id, guessed_category, guessed_header_category;
   u_int8_t protocol_id_already_guessed:1, host_already_guessed:1, init_finished:1, setup_packet_direction:1, packet_direction:1, check_extra_packets:1;
 
+#ifdef USE_FAST_PATH
+    uint8_t   include_protocol_num;
+    u_int16_t include_protocol_ids[MAX_INCLUDE_EXCLUDE_PROTOCOL_NUM];
+    uint8_t   exclude_protocol_num;
+    u_int16_t exclude_protocol_ids[MAX_INCLUDE_EXCLUDE_PROTOCOL_NUM];
+#endif
+    
   /*
     if ndpi_struct->direction_detect_disable == 1
     tcp sequence number connection tracking

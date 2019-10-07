@@ -1,0 +1,12 @@
+
+all:	  dsm
+#-vdt
+dsm:	dsm.l dsm.y dsm.h dsm_funcs.c
+	bison -d dsm.y
+	flex -o dsm.lex.c dsm.l
+#	cc -g -o $@ dsm.tab.c dsm.lex.c dsm_funcs.c 
+
+
+clean:
+	rm -f dsm \
+	dsm.lex.c dsm.tab.h dsm.tab.c

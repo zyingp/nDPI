@@ -658,7 +658,7 @@ void ndpi_set_proto_defaults(struct ndpi_detection_module_struct *ndpi_mod,
 
   if(ndpi_mod->proto_defaults[protoId].protoName != NULL) {
 #ifdef DEBUG
-    NDPI_LOG_ERR(ndpi_mod, "[NDPI] %s/protoId=%d: already initialized. Ignoring it\n", protoName, protoId);
+    //NDPI_LOG_ERR(ndpi_mod, "[NDPI] %s/protoId=%d: already initialized. Ignoring it\n", protoName, protoId);
 #endif
     return;
   }
@@ -817,7 +817,7 @@ static int ndpi_add_host_url_subprotocol(struct ndpi_detection_module_struct *nd
 					 ndpi_protocol_breed_t breed)
 {
 #ifdef DEBUG
-  NDPI_LOG_DEBUG2(ndpi_struct, "[NDPI] Adding [%s][%d]\n", value, protocol_id);
+  //NDPI_LOG_DEBUG2(ndpi_struct, "[NDPI] Adding [%s][%d]\n", value, protocol_id);
 #endif
 
   return(ndpi_string_to_automa(ndpi_struct, &ndpi_struct->host_automa, value, protocol_id,
@@ -3815,6 +3815,12 @@ static int ndpi_init_packet_header(struct ndpi_detection_module_struct *ndpi_str
 	 && flow->detected_protocol_stack[0] == NDPI_PROTOCOL_UNKNOWN) {
 	u_int8_t backup;
 	u_int16_t backup1, backup2;
+#ifdef USE_FAST_PATH
+      uint8_t   include_protocol_num;
+      u_int16_t include_protocol_ids[MAX_INCLUDE_EXCLUDE_PROTOCOL_NUM];
+      uint8_t   exclude_protocol_num;
+      u_int16_t exclude_protocol_ids[MAX_INCLUDE_EXCLUDE_PROTOCOL_NUM];
+#endif
 
 	if(flow->http.url)          ndpi_free(flow->http.url);
 	if(flow->http.content_type) ndpi_free(flow->http.content_type);
@@ -3822,7 +3828,27 @@ static int ndpi_init_packet_header(struct ndpi_detection_module_struct *ndpi_str
 	backup  = flow->num_processed_pkts;
 	backup1 = flow->guessed_protocol_id;
 	backup2 = flow->guessed_host_protocol_id;
+#ifdef USE_FAST_PATH
+          include_protocol_num = flow->include_protocol_num;
+          for (int i=0; i<include_protocol_num; ++i) {
+              include_protocol_ids[i] = flow->include_protocol_ids[i];
+          }
+          exclude_protocol_num = flow->exclude_protocol_num;
+          for (int i=0; i<exclude_protocol_num; ++i) {
+              exclude_protocol_ids[i] = flow->exclude_protocol_ids[i];
+          }
+#endif
 	memset(flow, 0, sizeof(*(flow)));
+#ifdef USE_FAST_PATH
+          flow->include_protocol_num = include_protocol_num;
+          for (int i=0; i<include_protocol_num; ++i) {
+              flow->include_protocol_ids[i] = include_protocol_ids[i];
+          }
+          flow->exclude_protocol_num = exclude_protocol_num;
+          for (int i=0; i<exclude_protocol_num; ++i) {
+              flow->exclude_protocol_ids[i] = exclude_protocol_ids[i];
+          }
+#endif
 	flow->num_processed_pkts = backup;
 	flow->guessed_protocol_id      = backup1;
 	flow->guessed_host_protocol_id = backup2;
@@ -3966,6 +3992,9 @@ void ndpi_connection_tracking(struct ndpi_detection_module_struct *ndpi_struct,
   }
 }
 
+//#define PRINT_LOOP
+u_int64_t loop_count = 0;  // for fast path
+
 void check_ndpi_other_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 				struct ndpi_flow_struct *flow,
 				NDPI_SELECTION_BITMASK_PROTOCOL_SIZE *ndpi_selection_packet) {
@@ -4031,8 +4060,14 @@ void check_ndpi_udp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 	 & *ndpi_selection_packet) == ndpi_struct->callback_buffer[proto_index].ndpi_selection_bitmask) {
     if((flow->guessed_protocol_id != NDPI_PROTOCOL_UNKNOWN)
        && (ndpi_struct->proto_defaults[flow->guessed_protocol_id].func != NULL))
+    {
       ndpi_struct->proto_defaults[flow->guessed_protocol_id].func(ndpi_struct, flow),
+#ifdef PRINT_LOOP
+        printf("udp called guessed func, guessed_id %d \n", flow->guessed_protocol_id);
+#endif
+         ++loop_count;
 	func = ndpi_struct->proto_defaults[flow->guessed_protocol_id].func;
+    }
   }
 
   for(a = 0; a < ndpi_struct->callback_buffer_size_udp; a++) {
@@ -4043,6 +4078,10 @@ void check_ndpi_udp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 			       ndpi_struct->callback_buffer_udp[a].excluded_protocol_bitmask) == 0
        && NDPI_BITMASK_COMPARE(ndpi_struct->callback_buffer_udp[a].detection_bitmask,
 			       detection_bitmask) != 0) {
+#ifdef PRINT_LOOP
+           printf("inside udp  big loop a=%d\n",a);
+#endif
+           ++loop_count;
       ndpi_struct->callback_buffer_udp[a].func(ndpi_struct, flow);
       // NDPI_LOG_DBG(ndpi_struct, "[UDP,CALL] dissector of protocol as callback_buffer idx =  %d\n",a);
       if(flow->detected_protocol_stack[0] != NDPI_PROTOCOL_UNKNOWN)
@@ -4064,6 +4103,41 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
   NDPI_PROTOCOL_BITMASK detection_bitmask;
 
   NDPI_SAVE_AS_BITMASK(detection_bitmask, flow->packet.detected_protocol_stack[0]);
+    
+
+#ifdef USE_FAST_PATH
+    
+    u_int16_t protoIdx;
+    int16_t protoId;
+    if(flow->include_protocol_num > 0)
+    {
+        for (int i = 0 ; i < flow->include_protocol_num; ++i)
+        {
+            protoIdx = ndpi_struct->proto_defaults[flow->include_protocol_ids[i]].protoIdx;
+            protoId = ndpi_struct->proto_defaults[flow->include_protocol_ids[i]].protoId;
+            if((protoId != NDPI_PROTOCOL_UNKNOWN)
+               && NDPI_BITMASK_COMPARE(flow->excluded_protocol_bitmask,
+                                       ndpi_struct->callback_buffer[protoIdx].excluded_protocol_bitmask) == 0
+               && NDPI_BITMASK_COMPARE(ndpi_struct->callback_buffer[protoIdx].detection_bitmask,
+                                       detection_bitmask) != 0
+               && (ndpi_struct->callback_buffer[protoIdx].ndpi_selection_bitmask & *ndpi_selection_packet) == ndpi_struct->callback_buffer[protoIdx].ndpi_selection_bitmask )
+            {
+                if((flow->include_protocol_ids[i] != NDPI_PROTOCOL_UNKNOWN)
+                   && (ndpi_struct->proto_defaults[flow->include_protocol_ids[i]].func != NULL))
+                {
+                    ndpi_struct->proto_defaults[flow->include_protocol_ids[i]].func(ndpi_struct, flow);
+#ifdef PRINT_LOOP
+                    printf("tcp has payload called included func, included_id %d \n", flow->include_protocol_ids[i]);
+#endif
+                    ++loop_count;
+                    //func = ndpi_struct->proto_defaults[flow->guessed_protocol_id].func;
+                }
+            }
+        }
+        return;
+    }
+#endif //USE_FAST_PATH
+    
 
   if(flow->packet.payload_packet_len != 0) {
     if((proto_id != NDPI_PROTOCOL_UNKNOWN)
@@ -4073,8 +4147,14 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
        && (ndpi_struct->callback_buffer[proto_index].ndpi_selection_bitmask & *ndpi_selection_packet) == ndpi_struct->callback_buffer[proto_index].ndpi_selection_bitmask) {
       if((flow->guessed_protocol_id != NDPI_PROTOCOL_UNKNOWN)
 	 && (ndpi_struct->proto_defaults[flow->guessed_protocol_id].func != NULL))
+      {
 	ndpi_struct->proto_defaults[flow->guessed_protocol_id].func(ndpi_struct, flow),
+#ifdef PRINT_LOOP
+          printf("tcp has payload called guessed func, guessed_id %d \n", flow->guessed_protocol_id);
+#endif
+        ++loop_count;
 	  func = ndpi_struct->proto_defaults[flow->guessed_protocol_id].func;
+      }
     }
 
     if(flow->detected_protocol_stack[0] == NDPI_PROTOCOL_UNKNOWN) {
@@ -4085,6 +4165,10 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 				   ndpi_struct->callback_buffer_tcp_payload[a].excluded_protocol_bitmask) == 0
 	   && NDPI_BITMASK_COMPARE(ndpi_struct->callback_buffer_tcp_payload[a].detection_bitmask,
 				   detection_bitmask) != 0) {
+#ifdef PRINT_LOOP
+           printf("inside tcp has payload big loop a=%d\n",a);
+#endif
+           ++loop_count;
 	  ndpi_struct->callback_buffer_tcp_payload[a].func(ndpi_struct, flow);
 
 	  if(flow->detected_protocol_stack[0] != NDPI_PROTOCOL_UNKNOWN)
@@ -4104,8 +4188,14 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
       if((flow->guessed_protocol_id != NDPI_PROTOCOL_UNKNOWN)
 	 && (ndpi_struct->proto_defaults[flow->guessed_protocol_id].func != NULL)
 	 && ((ndpi_struct->callback_buffer[flow->guessed_protocol_id].ndpi_selection_bitmask & NDPI_SELECTION_BITMASK_PROTOCOL_HAS_PAYLOAD) == 0))
+      {
 	ndpi_struct->proto_defaults[flow->guessed_protocol_id].func(ndpi_struct, flow),
+#ifdef PRINT_LOOP
+          printf("tcp no payload called guessed func, guessed_id %d \n", flow->guessed_protocol_id);
+#endif
+           ++loop_count;
 	  func = ndpi_struct->proto_defaults[flow->guessed_protocol_id].func;
+      }
     }
 
     for(a = 0; a < ndpi_struct->callback_buffer_size_tcp_no_payload; a++) {
@@ -4116,6 +4206,10 @@ void check_ndpi_tcp_flow_func(struct ndpi_detection_module_struct *ndpi_struct,
 				 ndpi_struct->callback_buffer_tcp_no_payload[a].excluded_protocol_bitmask) == 0
 	 && NDPI_BITMASK_COMPARE(ndpi_struct->callback_buffer_tcp_no_payload[a].detection_bitmask,
 				 detection_bitmask) != 0) {
+#ifdef PRINT_LOOP
+         printf("inside tcp no payload big loop a=%d\n",a);
+#endif
+         ++loop_count;
 	ndpi_struct->callback_buffer_tcp_no_payload[a].func(ndpi_struct, flow);
 
 	if(flow->detected_protocol_stack[0] != NDPI_PROTOCOL_UNKNOWN)

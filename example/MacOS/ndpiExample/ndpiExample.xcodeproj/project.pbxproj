@@ -8,6 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		E32F1ECB20844620005739B7 /* whatsapp.c in Sources */ = {isa = PBXBuildFile; fileRef = E32F1ECA20844620005739B7 /* whatsapp.c */; };
+		E345CC3F22C8B84400C7CB88 /* dsm.tab.c in Sources */ = {isa = PBXBuildFile; fileRef = E345CC3822C8B84300C7CB88 /* dsm.tab.c */; };
+		E345CC4022C8B84400C7CB88 /* dsm_funcs.c in Sources */ = {isa = PBXBuildFile; fileRef = E345CC3B22C8B84300C7CB88 /* dsm_funcs.c */; };
+		E345CC4222C8B84400C7CB88 /* dsm.lex.c in Sources */ = {isa = PBXBuildFile; fileRef = E345CC3D22C8B84400C7CB88 /* dsm.lex.c */; };
+		E358C3312292AB3400E53752 /* rules.txt in Resources */ = {isa = PBXBuildFile; fileRef = E358C3302292AB3400E53752 /* rules.txt */; };
 		E35D5510228BA70600A80DED /* ajp.c in Sources */ = {isa = PBXBuildFile; fileRef = E35D5506228BA70400A80DED /* ajp.c */; };
 		E35D5511228BA70600A80DED /* snmp_proto.c in Sources */ = {isa = PBXBuildFile; fileRef = E35D5507228BA70400A80DED /* snmp_proto.c */; };
 		E35D5512228BA70600A80DED /* modbus.c in Sources */ = {isa = PBXBuildFile; fileRef = E35D5508228BA70400A80DED /* modbus.c */; };
@@ -193,6 +197,12 @@
 
 /* Begin PBXFileReference section */
 		E32F1ECA20844620005739B7 /* whatsapp.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = whatsapp.c; sourceTree = "<group>"; };
+		E345CC3822C8B84300C7CB88 /* dsm.tab.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = dsm.tab.c; path = ../../../dsm.tab.c; sourceTree = "<group>"; };
+		E345CC3922C8B84300C7CB88 /* dsm.tab.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = dsm.tab.h; path = ../../../dsm.tab.h; sourceTree = "<group>"; };
+		E345CC3A22C8B84300C7CB88 /* dsm.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = dsm.h; path = ../../../dsm.h; sourceTree = "<group>"; };
+		E345CC3B22C8B84300C7CB88 /* dsm_funcs.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = dsm_funcs.c; path = ../../../dsm_funcs.c; sourceTree = "<group>"; };
+		E345CC3D22C8B84400C7CB88 /* dsm.lex.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = dsm.lex.c; path = ../../../dsm.lex.c; sourceTree = "<group>"; };
+		E358C3302292AB3400E53752 /* rules.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = rules.txt; path = ../../../rules.txt; sourceTree = "<group>"; };
 		E35D5506228BA70400A80DED /* ajp.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = ajp.c; sourceTree = "<group>"; };
 		E35D5507228BA70400A80DED /* snmp_proto.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = snmp_proto.c; sourceTree = "<group>"; };
 		E35D5508228BA70400A80DED /* modbus.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = modbus.c; sourceTree = "<group>"; };
@@ -403,6 +413,8 @@
 		E395478E20269F43000BBA0D /* libpcap.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libpcap.tbd; path = usr/lib/libpcap.tbd; sourceTree = SDKROOT; };
 		E39547922026AB75000BBA0D /* ndpi_utils.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ndpi_utils.h; sourceTree = "<group>"; };
 		E39547932026B2A9000BBA0D /* capture.pcap */ = {isa = PBXFileReference; lastKnownFileType = file; path = capture.pcap; sourceTree = "<group>"; };
+		E3C0B78522D388E0001D3248 /* dsm.l */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.lex; name = dsm.l; path = ../../../dsm.l; sourceTree = "<group>"; };
+		E3C0B78622D388E0001D3248 /* dsm.y */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.yacc; name = dsm.y; path = ../../../dsm.y; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -445,6 +457,14 @@
 				E395455B202558E5000BBA0D /* ndpi_util.h */,
 				E39547922026AB75000BBA0D /* ndpi_utils.h */,
 				E395455C202558E5000BBA0D /* ndpiReader.c */,
+				E358C3302292AB3400E53752 /* rules.txt */,
+				E3C0B78522D388E0001D3248 /* dsm.l */,
+				E3C0B78622D388E0001D3248 /* dsm.y */,
+				E345CC3B22C8B84300C7CB88 /* dsm_funcs.c */,
+				E345CC3A22C8B84300C7CB88 /* dsm.h */,
+				E345CC3D22C8B84400C7CB88 /* dsm.lex.c */,
+				E345CC3822C8B84300C7CB88 /* dsm.tab.c */,
+				E345CC3922C8B84300C7CB88 /* dsm.tab.h */,
 				E3954559202558E5000BBA0D /* protos.txt */,
 				E39547932026B2A9000BBA0D /* capture.pcap */,
 				E3954558202558E5000BBA0D /* uthash.h */,
@@ -786,6 +806,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E358C3312292AB3400E53752 /* rules.txt in Resources */,
 				E395430C20255354000BBA0D /* ndpi_define.h.in in Resources */,
 				E3953F5920254989000BBA0D /* Assets.xcassets in Resources */,
 				E39547942026B2AA000BBA0D /* capture.pcap in Resources */,
@@ -914,6 +935,7 @@
 				E39543C920255354000BBA0D /* fiesta.c in Sources */,
 				E35D5514228BA70600A80DED /* upnp.c in Sources */,
 				E395454120255355000BBA0D /* xbox.c in Sources */,
+				E345CC4222C8B84400C7CB88 /* dsm.lex.c in Sources */,
 				E395453D20255355000BBA0D /* warcraft3.c in Sources */,
 				E39543D220255354000BBA0D /* guildwars.c in Sources */,
 				E39543AA20255354000BBA0D /* ftp.c in Sources */,
@@ -930,6 +952,7 @@
 				E35D5516228BA70600A80DED /* mdns_proto.c in Sources */,
 				E39543C220255354000BBA0D /* dns.c in Sources */,
 				E39543B920255354000BBA0D /* corba.c in Sources */,
+				E345CC4022C8B84400C7CB88 /* dsm_funcs.c in Sources */,
 				E39543B320255354000BBA0D /* btlib.c in Sources */,
 				E3953F5F2025498A000BBA0D /* main.m in Sources */,
 				E39543CF20255354000BBA0D /* git.c in Sources */,
@@ -963,6 +986,7 @@
 				E395452720255354000BBA0D /* stealthnet.c in Sources */,
 				E395453320255354000BBA0D /* tinc.c in Sources */,
 				E39543D920255354000BBA0D /* iax.c in Sources */,
+				E345CC3F22C8B84400C7CB88 /* dsm.tab.c in Sources */,
 				E395452920255354000BBA0D /* stun.c in Sources */,
 				E395450920255354000BBA0D /* pptp.c in Sources */,
 				E39543C320255354000BBA0D /* dofus.c in Sources */,

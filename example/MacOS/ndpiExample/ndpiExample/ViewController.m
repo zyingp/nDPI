@@ -58,11 +58,26 @@ extern int orginal_main(int argc, char **argv);
     args[0] = (char*)"ndpiReader";
     args[1] = (char*)"-i";
     NSString* pcap_file = [[NSBundle mainBundle]pathForResource:@"capture" ofType:@"pcap"];
-    args[2] = (char*)[pcap_file cStringUsingEncoding:NSUTF8StringEncoding];
+    //args[2] = (char*)[pcap_file cStringUsingEncoding:NSUTF8StringEncoding];
     // Change to you pcap file path if you want.
-    //args[2] = (char*)"/Users/zengyingpei/Documents/code/nDPI/example/MacOS/ndpiExample/ndpiExample/capture.pcap";
+    //args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/test79.pcap";
+    //args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/test36.pcap";
+    //args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/test304.pcap";
+    args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/top100.pcap";
+    //args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/top500.pcap";
+    //args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/top500-2.pcap";
+    //args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/宜春pcap/testgroup-629-702.pcap";
+    //args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/宜春pcap/test_p1.pcap";
+    //args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/宜春pcap/test_p0.pcap";
+    //args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/宜春pcap/out300w.pcap";
+    //args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/宜春pcap/smalltest.pcap";
+    //args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/upc/out30w_upc.pcap";
+    //args[2] = (char*)"/Users/zengyingpei/Downloads/pcapset/upc/out300w_upc.pcap";
+    args[3] = (char*)"-y";
+    NSString* proto_file = [[NSBundle mainBundle]pathForResource:@"rules" ofType:@"txt"];
+    args[4] = (char*)[proto_file cStringUsingEncoding:NSUTF8StringEncoding];
     // Remember to change below number of args when you change to other command inputs.
-    orginal_main(3, args);
+    orginal_main(5, args);
     
     
     
