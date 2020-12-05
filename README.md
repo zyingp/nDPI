@@ -58,6 +58,9 @@ To ensure that a tar file includes all necessary files and to run tests on distr
 - make distcheck
 
 # DSM documentation
+
+An option "-y dsmrulefile" is added in ndpiReader to enable the DSM method.
+
 Please check our paper at https://www.mdpi.com/2073-8994/12/12/2011
 
 It can be cited with as below:
