@@ -57,6 +57,13 @@ To ensure that a tar file includes all necessary files and to run tests on distr
 
 - make distcheck
 
+# DSM documentation
+Please check our paper at https://www.mdpi.com/2073-8994/12/12/2011
+
+It can be cited with as below:
+Yingpei Zeng, Shanqing Guo, Ting Wu, Qiuhua Zheng, DSM: Delayed Signature Matching in Deep Packet Inspection, Symmetry, Vol.12, No.12, 2011, 2020.
+
+
 [ntopng_logo]: https://camo.githubusercontent.com/0f789abcef232035c05e0d2e82afa3cc3be46485/687474703a2f2f7777772e6e746f702e6f72672f77702d636f6e74656e742f75706c6f6164732f323031312f30382f6e746f706e672d69636f6e2d313530783135302e706e67
 
 [ntop_logo]: https://camo.githubusercontent.com/58e2a1ecfff62d8ecc9d74633bd1013f26e06cba/687474703a2f2f7777772e6e746f702e6f72672f77702d636f6e74656e742f75706c6f6164732f323031352f30352f6e746f702e706e67
